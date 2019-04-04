@@ -401,9 +401,9 @@ struct tcp_sock {
 	 */
 	struct request_sock *fastopen_rsk;
 	u32	*saved_syn;
-#if IS_ENABLED(CONFIG_TCP_CRIU)
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
 /* TCP Migration related information */
-  u32	mig_token;
+	u32	mig_token;
 #endif
 };
 

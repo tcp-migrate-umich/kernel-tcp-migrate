@@ -754,8 +754,8 @@ config TCP_MD5SIG
 
 	  If unsure, say N.
 
-config TCP_CRIU
-  bool "TCP criu stuff"
+config TCP_MIGRATE
+  	bool "TCP: Support for migrating TCP connections"
 	---help---
-    HI~!
+	  If unsure, say Y ;)
 

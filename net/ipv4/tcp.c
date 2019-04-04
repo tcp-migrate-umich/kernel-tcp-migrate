@@ -452,8 +452,8 @@ void tcp_init_sock(struct sock *sk)
 	sk->sk_sndbuf = sock_net(sk)->ipv4.sysctl_tcp_wmem[1];
 	sk->sk_rcvbuf = sock_net(sk)->ipv4.sysctl_tcp_rmem[1];
 
-#if IS_ENABLED(CONFIG_TCP_CRIU)
-  tp->mig_token = 0;
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	tp->mig_token = 0;
 #endif
 
 	sk_sockets_allocated_inc(sk);
@@ -2926,13 +2926,13 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 			err = -EPERM;
 		break;
 
-#if IS_ENABLED(CONFIG_TCP_CRIU)
-  case TCP_MIGRATE_TOKEN:
-    if (!tp->repair)
-      err = -EINVAL;
-    else
-      tp->mig_token = val;
-    break;
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	case TCP_MIGRATE_TOKEN:
+		if (!tp->repair)
+			err = -EINVAL;
+		else
+			tp->mig_token = val;
+		break;
 #endif
 
 	case TCP_CORK:
@@ -3553,13 +3553,13 @@ static int do_tcp_getsockopt(struct sock *sk, int level,
 			return -EINVAL;
 		break;
 
-#if IS_ENABLED(CONFIG_TCP_CRIU)
-  case TCP_MIGRATE_TOKEN:
-    if (tp->repair)
-      val = tp->mig_token;
-    else
-      return -EINVAL;
-    break;
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	case TCP_MIGRATE_TOKEN:
+		if (tp->repair)
+			val = tp->mig_token;
+		else
+			return -EINVAL;
+		break;
 #endif
 
 	case TCP_USER_TIMEOUT:
