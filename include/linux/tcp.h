@@ -373,6 +373,10 @@ struct tcp_sock {
 	 */
 	struct request_sock *fastopen_rsk;
 	u32	*saved_syn;
+#if IS_ENABLED(CONFIG_TCP_CRIU)
+/* TCP Migration related information */
+  u32	mig_token;
+#endif
 };
 
 enum tsq_enum {

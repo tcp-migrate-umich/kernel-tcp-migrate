@@ -122,6 +122,9 @@ enum {
 #define TCP_MD5SIG_EXT		32	/* TCP MD5 Signature with extensions */
 #define TCP_FASTOPEN_KEY	33	/* Set the key for Fast Open (cookie) */
 #define TCP_FASTOPEN_NO_COOKIE	34	/* Enable TFO without a TFO cookie */
+#if IS_ENABLED(CONFIG_TCP_CRIU)
+#define TCP_MIGRATE_TOKEN	35	/* Get/set TCP migration token */
+#endif
 
 struct tcp_repair_opt {
 	__u32	opt_code;
