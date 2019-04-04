@@ -454,6 +454,10 @@ void tcp_init_sock(struct sock *sk)
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
 	tp->mig_token = 0;
+        // JOSEPH
+        // tp->pr =  proc_net_mkdir
+        // tp->start = create_proc_entry // write only & flush
+        // tp->synack = create_proc_entry // read only
 #endif
 
 	sk_sockets_allocated_inc(sk);

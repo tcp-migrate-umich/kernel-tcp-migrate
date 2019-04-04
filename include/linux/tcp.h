@@ -145,6 +145,7 @@ static inline struct tcp_request_sock *tcp_rsk(const struct request_sock *req)
 }
 
 struct tcp_sock {
+  //JOSEPH
 	/* inet_connection_sock has to be the first member of tcp_sock */
 	struct inet_connection_sock	inet_conn;
 	u16	tcp_header_len;	/* Bytes of tcp header to send		*/
@@ -404,7 +405,9 @@ struct tcp_sock {
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
 /* TCP Migration related information */
 	u32	mig_token;
+	struct proc_dir_entry *pr;
 #endif
+
 };
 
 enum tsq_enum {
