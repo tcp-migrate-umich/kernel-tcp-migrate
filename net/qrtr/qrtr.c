@@ -15,6 +15,7 @@
 #include <linux/netlink.h>
 #include <linux/qrtr.h>
 #include <linux/termios.h>	/* For TIOCINQ/OUTQ */
+#include <linux/numa.h>
 
 #include <net/sock.h>
 
@@ -101,7 +102,7 @@ static inline struct qrtr_sock *qrtr_sk(struct sock *sk)
 	return container_of(sk, struct qrtr_sock, sk);
 }
 
-static unsigned int qrtr_local_nid = -1;
+static unsigned int qrtr_local_nid = NUMA_NO_NODE;
 
 /* for node ids */
 static RADIX_TREE(qrtr_nodes, GFP_KERNEL);
@@ -191,8 +192,13 @@ static int qrtr_node_enqueue(struct qrtr_node *node, struct sk_buff *skb,
 	hdr->type = cpu_to_le32(type);
 	hdr->src_node_id = cpu_to_le32(from->sq_node);
 	hdr->src_port_id = cpu_to_le32(from->sq_port);
-	hdr->dst_node_id = cpu_to_le32(to->sq_node);
-	hdr->dst_port_id = cpu_to_le32(to->sq_port);
+	if (to->sq_port == QRTR_PORT_CTRL) {
+		hdr->dst_node_id = cpu_to_le32(node->nid);
+		hdr->dst_port_id = cpu_to_le32(QRTR_NODE_BCAST);
+	} else {
+		hdr->dst_node_id = cpu_to_le32(to->sq_node);
+		hdr->dst_port_id = cpu_to_le32(to->sq_port);
+	}
 
 	hdr->size = cpu_to_le32(len);
 	hdr->confirm_rx = 0;
@@ -764,6 +770,10 @@ static int qrtr_sendmsg(struct socket *sock, struct msghdr *msg, size_t len)
 	node = NULL;
 	if (addr->sq_node == QRTR_NODE_BCAST) {
 		enqueue_fn = qrtr_bcast_enqueue;
+		if (addr->sq_port != QRTR_PORT_CTRL) {
+			release_sock(sk);
+			return -ENOTCONN;
+		}
 	} else if (addr->sq_node == ipc->us.sq_node) {
 		enqueue_fn = qrtr_local_enqueue;
 	} else {
@@ -893,7 +903,7 @@ static int qrtr_connect(struct socket *sock, struct sockaddr *saddr,
 }
 
 static int qrtr_getname(struct socket *sock, struct sockaddr *saddr,
-			int *len, int peer)
+			int peer)
 {
 	struct qrtr_sock *ipc = qrtr_sk(sock->sk);
 	struct sockaddr_qrtr qaddr;
@@ -912,12 +922,11 @@ static int qrtr_getname(struct socket *sock, struct sockaddr *saddr,
 	}
 	release_sock(sk);
 
-	*len = sizeof(qaddr);
 	qaddr.sq_family = AF_QIPCRTR;
 
 	memcpy(saddr, &qaddr, sizeof(qaddr));
 
-	return 0;
+	return sizeof(qaddr);
 }
 
 static int qrtr_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
@@ -1116,9 +1125,13 @@ static int __init qrtr_proto_init(void)
 		return rc;
 	}
 
-	rtnl_register(PF_QIPCRTR, RTM_NEWADDR, qrtr_addr_doit, NULL, 0);
+	rc = rtnl_register_module(THIS_MODULE, PF_QIPCRTR, RTM_NEWADDR, qrtr_addr_doit, NULL, 0);
+	if (rc) {
+		sock_unregister(qrtr_family.family);
+		proto_unregister(&qrtr_proto);
+	}
 
-	return 0;
+	return rc;
 }
 postcore_initcall(qrtr_proto_init);
 
@@ -1132,3 +1145,4 @@ module_exit(qrtr_proto_fini);
 
 MODULE_DESCRIPTION("Qualcomm IPC-router driver");
 MODULE_LICENSE("GPL v2");
+MODULE_ALIAS_NETPROTO(PF_QIPCRTR);

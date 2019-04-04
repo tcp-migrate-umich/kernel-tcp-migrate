@@ -15,10 +15,11 @@
 #include <linux/fs.h>
 #include <linux/mount.h>
 #include <linux/namei.h>
+#include <uapi/linux/mount.h>
 
 #include "include/apparmor.h"
 #include "include/audit.h"
-#include "include/context.h"
+#include "include/cred.h"
 #include "include/domain.h"
 #include "include/file.h"
 #include "include/match.h"
@@ -121,7 +122,7 @@ static void audit_cb(struct audit_buffer *ab, void *va)
  * @src_name: src_name of object being mediated (MAYBE_NULL)
  * @type: type of filesystem (MAYBE_NULL)
  * @trans: name of trans (MAYBE NULL)
- * @flags: filesystem idependent mount flags
+ * @flags: filesystem independent mount flags
  * @data: filesystem mount flags
  * @request: permissions requested
  * @perms: the permissions computed for the request (NOT NULL)

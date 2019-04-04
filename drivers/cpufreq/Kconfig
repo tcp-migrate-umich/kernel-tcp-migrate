@@ -207,8 +207,6 @@ comment "CPU frequency scaling drivers"
 config CPUFREQ_DT
 	tristate "Generic DT based cpufreq driver"
 	depends on HAVE_CLK && OF
-	# if CPU_THERMAL is on and THERMAL=m, CPUFREQ_DT cannot be =y:
-	depends on !CPU_THERMAL || THERMAL
 	select CPUFREQ_DT_PLATDEV
 	select PM_OPP
 	help
@@ -237,16 +235,6 @@ endif
 
 if PPC32 || PPC64
 source "drivers/cpufreq/Kconfig.powerpc"
-endif
-
-if AVR32
-config AVR32_AT32AP_CPUFREQ
-	bool "CPU frequency driver for AT32AP"
-	depends on PLATFORM_AT32AP
-	default n
-	help
-	  This enables the CPU frequency driver for AT32AP processors.
-	  If in doubt, say N.
 endif
 
 if IA64
@@ -337,7 +325,6 @@ endif
 config QORIQ_CPUFREQ
 	tristate "CPU frequency scaling driver for Freescale QorIQ SoCs"
 	depends on OF && COMMON_CLK && (PPC_E500MC || ARM || ARM64)
-	depends on !CPU_THERMAL || THERMAL
 	select CLK_QORIQ
 	help
 	  This adds the CPUFreq driver support for Freescale QorIQ SoCs

@@ -134,16 +134,16 @@ static void mlx4_ib_free_cq_buf(struct mlx4_ib_dev *dev, struct mlx4_ib_cq_buf *
 	mlx4_buf_free(dev->dev, (cqe + 1) * buf->entry_size, &buf->buf);
 }
 
-static int mlx4_ib_get_cq_umem(struct mlx4_ib_dev *dev, struct ib_ucontext *context,
-			       struct mlx4_ib_cq_buf *buf, struct ib_umem **umem,
-			       u64 buf_addr, int cqe)
+static int mlx4_ib_get_cq_umem(struct mlx4_ib_dev *dev, struct ib_udata *udata,
+			       struct mlx4_ib_cq_buf *buf,
+			       struct ib_umem **umem, u64 buf_addr, int cqe)
 {
 	int err;
 	int cqe_size = dev->dev->caps.cqe_size;
 	int shift;
 	int n;
 
-	*umem = ib_umem_get(context, buf_addr, cqe * cqe_size,
+	*umem = ib_umem_get(udata, buf_addr, cqe * cqe_size,
 			    IB_ACCESS_LOCAL_WRITE, 1);
 	if (IS_ERR(*umem))
 		return PTR_ERR(*umem);
@@ -170,7 +170,7 @@ err_buf:
 	return err;
 }
 
-#define CQ_CREATE_FLAGS_SUPPORTED IB_CQ_FLAGS_TIMESTAMP_COMPLETION
+#define CQ_CREATE_FLAGS_SUPPORTED IB_UVERBS_CQ_FLAGS_TIMESTAMP_COMPLETION
 struct ib_cq *mlx4_ib_create_cq(struct ib_device *ibdev,
 				const struct ib_cq_init_attr *attr,
 				struct ib_ucontext *context,
@@ -181,6 +181,7 @@ struct ib_cq *mlx4_ib_create_cq(struct ib_device *ibdev,
 	struct mlx4_ib_dev *dev = to_mdev(ibdev);
 	struct mlx4_ib_cq *cq;
 	struct mlx4_uar *uar;
+	void *buf_addr;
 	int err;
 
 	if (entries < 1 || entries > dev->dev->caps.max_cqes)
@@ -189,7 +190,7 @@ struct ib_cq *mlx4_ib_create_cq(struct ib_device *ibdev,
 	if (attr->flags & ~CQ_CREATE_FLAGS_SUPPORTED)
 		return ERR_PTR(-EINVAL);
 
-	cq = kmalloc(sizeof *cq, GFP_KERNEL);
+	cq = kzalloc(sizeof(*cq), GFP_KERNEL);
 	if (!cq)
 		return ERR_PTR(-ENOMEM);
 
@@ -211,13 +212,14 @@ struct ib_cq *mlx4_ib_create_cq(struct ib_device *ibdev,
 			goto err_cq;
 		}
 
-		err = mlx4_ib_get_cq_umem(dev, context, &cq->buf, &cq->umem,
+		buf_addr = (void *)(unsigned long)ucmd.buf_addr;
+		err = mlx4_ib_get_cq_umem(dev, udata, &cq->buf, &cq->umem,
 					  ucmd.buf_addr, entries);
 		if (err)
 			goto err_cq;
 
-		err = mlx4_ib_db_map_user(to_mucontext(context), ucmd.db_addr,
-					  &cq->db);
+		err = mlx4_ib_db_map_user(to_mucontext(context), udata,
+					  ucmd.db_addr, &cq->db);
 		if (err)
 			goto err_mtt;
 
@@ -237,6 +239,8 @@ struct ib_cq *mlx4_ib_create_cq(struct ib_device *ibdev,
 		if (err)
 			goto err_db;
 
+		buf_addr = &cq->buf.buf;
+
 		uar = &dev->priv_uar;
 		cq->mcq.usage = MLX4_RES_USAGE_DRIVER;
 	}
@@ -246,7 +250,9 @@ struct ib_cq *mlx4_ib_create_cq(struct ib_device *ibdev,
 
 	err = mlx4_cq_alloc(dev->dev, entries, &cq->buf.mtt, uar,
 			    cq->db.dma, &cq->mcq, vector, 0,
-			    !!(cq->create_flags & IB_CQ_FLAGS_TIMESTAMP_COMPLETION));
+			    !!(cq->create_flags &
+			       IB_UVERBS_CQ_FLAGS_TIMESTAMP_COMPLETION),
+			    buf_addr, !!context);
 	if (err)
 		goto err_dbmap;
 
@@ -329,7 +335,7 @@ static int mlx4_alloc_resize_umem(struct mlx4_ib_dev *dev, struct mlx4_ib_cq *cq
 	if (!cq->resize_buf)
 		return -ENOMEM;
 
-	err = mlx4_ib_get_cq_umem(dev, cq->umem->context, &cq->resize_buf->buf,
+	err = mlx4_ib_get_cq_umem(dev, udata, &cq->resize_buf->buf,
 				  &cq->resize_umem, ucmd.buf_addr, entries);
 	if (err) {
 		kfree(cq->resize_buf);
@@ -601,6 +607,7 @@ static void use_tunnel_data(struct mlx4_ib_qp *qp, struct mlx4_ib_cq *cq, struct
 	wc->dlid_path_bits = 0;
 
 	if (is_eth) {
+		wc->slid = 0;
 		wc->vlan_id = be16_to_cpu(hdr->tun.sl_vid);
 		memcpy(&(wc->smac[0]), (char *)&hdr->tun.mac_31_0, 4);
 		memcpy(&(wc->smac[4]), (char *)&hdr->tun.slid_mac_47_32, 2);
@@ -851,7 +858,6 @@ repoll:
 			}
 		}
 
-		wc->slid	   = be16_to_cpu(cqe->rlid);
 		g_mlpath_rqpn	   = be32_to_cpu(cqe->g_mlpath_rqpn);
 		wc->src_qp	   = g_mlpath_rqpn & 0xffffff;
 		wc->dlid_path_bits = (g_mlpath_rqpn >> 24) & 0x7f;
@@ -860,6 +866,7 @@ repoll:
 		wc->wc_flags	  |= mlx4_ib_ipoib_csum_ok(cqe->status,
 					cqe->checksum) ? IB_WC_IP_CSUM_OK : 0;
 		if (is_eth) {
+			wc->slid = 0;
 			wc->sl  = be16_to_cpu(cqe->sl_vid) >> 13;
 			if (be32_to_cpu(cqe->vlan_my_qpn) &
 					MLX4_CQE_CVLAN_PRESENT_MASK) {
@@ -871,6 +878,7 @@ repoll:
 			memcpy(wc->smac, cqe->smac, ETH_ALEN);
 			wc->wc_flags |= (IB_WC_WITH_VLAN | IB_WC_WITH_SMAC);
 		} else {
+			wc->slid = be16_to_cpu(cqe->rlid);
 			wc->sl  = be16_to_cpu(cqe->sl_vid) >> 12;
 			wc->vlan_id = 0xffff;
 		}

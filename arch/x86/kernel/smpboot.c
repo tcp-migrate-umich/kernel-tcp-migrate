@@ -49,13 +49,14 @@
 #include <linux/sched/hotplug.h>
 #include <linux/sched/task_stack.h>
 #include <linux/percpu.h>
-#include <linux/bootmem.h>
+#include <linux/memblock.h>
 #include <linux/err.h>
 #include <linux/nmi.h>
 #include <linux/tboot.h>
 #include <linux/stackprotector.h>
 #include <linux/gfp.h>
 #include <linux/cpuidle.h>
+#include <linux/numa.h>
 
 #include <asm/acpi.h>
 #include <asm/desc.h>
@@ -75,16 +76,12 @@
 #include <asm/uv/uv.h>
 #include <linux/mc146818rtc.h>
 #include <asm/i8259.h>
-#include <asm/realmode.h>
 #include <asm/misc.h>
 #include <asm/qspinlock.h>
-
-/* Number of siblings per CPU package */
-int smp_num_siblings = 1;
-EXPORT_SYMBOL(smp_num_siblings);
-
-/* Last level cache ID of each logical CPU */
-DEFINE_PER_CPU_READ_MOSTLY(u16, cpu_llc_id) = BAD_APICID;
+#include <asm/intel-family.h>
+#include <asm/cpu_device_id.h>
+#include <asm/spec-ctrl.h>
+#include <asm/hw_irq.h>
 
 /* representing HT siblings of each logical CPU */
 DEFINE_PER_CPU_READ_MOSTLY(cpumask_var_t, cpu_sibling_map);
@@ -153,7 +150,7 @@ static inline void smpboot_restore_warm_reset_vector(void)
  */
 static void smp_callin(void)
 {
-	int cpuid, phys_id;
+	int cpuid;
 
 	/*
 	 * If waken up by an INIT in an 82489DX configuration
@@ -162,11 +159,6 @@ static void smp_callin(void)
 	 * now safe to touch our local APIC.
 	 */
 	cpuid = smp_processor_id();
-
-	/*
-	 * (This works even if the APIC is not enabled.)
-	 */
-	phys_id = read_apic_id();
 
 	/*
 	 * the boot CPU has finished the init stage and is spinning
@@ -226,6 +218,11 @@ static void notrace start_secondary(void *unused)
 #ifdef CONFIG_X86_32
 	/* switch away from the initial page table */
 	load_cr3(swapper_pg_dir);
+	/*
+	 * Initialize the CR4 shadow before doing anything that could
+	 * try to read it.
+	 */
+	cr4_init_shadow();
 	__flush_tlb_all();
 #endif
 	load_current_idt();
@@ -242,6 +239,8 @@ static void notrace start_secondary(void *unused)
 	 * Check TSC synchronization with the boot CPU:
 	 */
 	check_tsc_sync_target();
+
+	speculative_store_bypass_ht_init();
 
 	/*
 	 * Lock vector_lock, set CPU online and bring the vector
@@ -266,6 +265,23 @@ static void notrace start_secondary(void *unused)
 
 	wmb();
 	cpu_startup_entry(CPUHP_AP_ONLINE_IDLE);
+}
+
+/**
+ * topology_is_primary_thread - Check whether CPU is the primary SMT thread
+ * @cpu:	CPU to check
+ */
+bool topology_is_primary_thread(unsigned int cpu)
+{
+	return apic_id_is_primary_thread(per_cpu(x86_cpu_to_apicid, cpu));
+}
+
+/**
+ * topology_smt_supported - Check whether SMT is supported by the CPUs
+ */
+bool topology_smt_supported(void)
+{
+	return smp_num_siblings > 1;
 }
 
 /**
@@ -391,15 +407,47 @@ static bool match_smt(struct cpuinfo_x86 *c, struct cpuinfo_x86 *o)
 	return false;
 }
 
+/*
+ * Define snc_cpu[] for SNC (Sub-NUMA Cluster) CPUs.
+ *
+ * These are Intel CPUs that enumerate an LLC that is shared by
+ * multiple NUMA nodes. The LLC on these systems is shared for
+ * off-package data access but private to the NUMA node (half
+ * of the package) for on-package access.
+ *
+ * CPUID (the source of the information about the LLC) can only
+ * enumerate the cache as being shared *or* unshared, but not
+ * this particular configuration. The CPU in this case enumerates
+ * the cache to be shared across the entire package (spanning both
+ * NUMA nodes).
+ */
+
+static const struct x86_cpu_id snc_cpu[] = {
+	{ X86_VENDOR_INTEL, 6, INTEL_FAM6_SKYLAKE_X },
+	{}
+};
+
 static bool match_llc(struct cpuinfo_x86 *c, struct cpuinfo_x86 *o)
 {
 	int cpu1 = c->cpu_index, cpu2 = o->cpu_index;
 
-	if (per_cpu(cpu_llc_id, cpu1) != BAD_APICID &&
-	    per_cpu(cpu_llc_id, cpu1) == per_cpu(cpu_llc_id, cpu2))
-		return topology_sane(c, o, "llc");
+	/* Do not match if we do not have a valid APICID for cpu: */
+	if (per_cpu(cpu_llc_id, cpu1) == BAD_APICID)
+		return false;
 
-	return false;
+	/* Do not match if LLC id does not match: */
+	if (per_cpu(cpu_llc_id, cpu1) != per_cpu(cpu_llc_id, cpu2))
+		return false;
+
+	/*
+	 * Allow the SNC topology without warning. Return of false
+	 * means 'c' does not share the LLC of 'o'. This will be
+	 * reflected to userspace.
+	 */
+	if (!topology_same_node(c, o) && x86_match_cpu(snc_cpu))
+		return false;
+
+	return topology_sane(c, o, "llc");
 }
 
 /*
@@ -457,7 +505,8 @@ static struct sched_domain_topology_level x86_topology[] = {
 
 /*
  * Set if a package/die has multiple NUMA nodes inside.
- * AMD Magny-Cours and Intel Cluster-on-Die have this.
+ * AMD Magny-Cours, Intel Cluster-on-Die, and Intel
+ * Sub-NUMA Clustering have this.
  */
 static bool x86_has_numa_in_package;
 
@@ -623,6 +672,7 @@ static void __init smp_quirk_init_udelay(void)
 
 	/* if modern processor, use no delay */
 	if (((boot_cpu_data.x86_vendor == X86_VENDOR_INTEL) && (boot_cpu_data.x86 == 6)) ||
+	    ((boot_cpu_data.x86_vendor == X86_VENDOR_HYGON) && (boot_cpu_data.x86 >= 0x18)) ||
 	    ((boot_cpu_data.x86_vendor == X86_VENDOR_AMD) && (boot_cpu_data.x86 >= 0xF))) {
 		init_udelay = 0;
 		return;
@@ -787,7 +837,7 @@ wakeup_secondary_cpu_via_init(int phys_apicid, unsigned long start_eip)
 /* reduce the number of lines printed when booting a large cpu count system */
 static void announce_cpu(int cpu, int apicid)
 {
-	static int current_node = -1;
+	static int current_node = NUMA_NO_NODE;
 	int node = early_cpu_to_node(cpu);
 	static int width, node_width;
 
@@ -934,7 +984,7 @@ static int do_boot_cpu(int apicid, int cpu, struct task_struct *idle,
 	 * the targeted processor.
 	 */
 
-	if (get_uv_system_type() != UV_NON_UNIQUE_APIC) {
+	if (x86_platform.legacy.warm_reset) {
 
 		pr_debug("Setting warm reset code and vector.\n");
 
@@ -1006,7 +1056,7 @@ static int do_boot_cpu(int apicid, int cpu, struct task_struct *idle,
 	/* mark "stuck" area as not stuck */
 	*trampoline_status = 0;
 
-	if (get_uv_system_type() != UV_NON_UNIQUE_APIC) {
+	if (x86_platform.legacy.warm_reset) {
 		/*
 		 * Cleanup possible dangling ends...
 		 */
@@ -1258,6 +1308,8 @@ void __init native_smp_prepare_cpus(unsigned int max_cpus)
 	set_mtrr_aps_delayed_init();
 
 	smp_quirk_init_udelay();
+
+	speculative_store_bypass_ht_init();
 }
 
 void arch_enable_nonboot_cpus_begin(void)
@@ -1282,18 +1334,24 @@ void __init native_smp_prepare_boot_cpu(void)
 	cpu_set_state_online(me);
 }
 
-void __init native_smp_cpus_done(unsigned int max_cpus)
+void __init calculate_max_logical_packages(void)
 {
 	int ncpus;
 
-	pr_debug("Boot done\n");
 	/*
 	 * Today neither Intel nor AMD support heterogenous systems so
 	 * extrapolate the boot cpu's data to all packages.
 	 */
 	ncpus = cpu_data(0).booted_cores * topology_max_smt_threads();
-	__max_logical_packages = DIV_ROUND_UP(nr_cpu_ids, ncpus);
+	__max_logical_packages = DIV_ROUND_UP(total_cpus, ncpus);
 	pr_info("Max logical packages: %u\n", __max_logical_packages);
+}
+
+void __init native_smp_cpus_done(unsigned int max_cpus)
+{
+	pr_debug("Boot done\n");
+
+	calculate_max_logical_packages();
 
 	if (x86_has_numa_in_package)
 		set_sched_topology(x86_numa_in_package_topology);
@@ -1431,8 +1489,8 @@ static void remove_siblinginfo(int cpu)
 	cpumask_clear(cpu_llc_shared_mask(cpu));
 	cpumask_clear(topology_sibling_cpumask(cpu));
 	cpumask_clear(topology_core_cpumask(cpu));
-	c->phys_proc_id = 0;
 	c->cpu_core_id = 0;
+	c->booted_cores = 0;
 	cpumask_clear_cpu(cpu, cpu_sibling_setup_mask);
 	recompute_smt_state();
 }
@@ -1531,6 +1589,9 @@ static inline void mwait_play_dead(void)
 	void *mwait_ptr;
 	int i;
 
+	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD ||
+	    boot_cpu_data.x86_vendor == X86_VENDOR_HYGON)
+		return;
 	if (!this_cpu_has(X86_FEATURE_MWAIT))
 		return;
 	if (!this_cpu_has(X86_FEATURE_CLFLUSH))

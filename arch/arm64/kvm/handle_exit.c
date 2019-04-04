@@ -22,18 +22,27 @@
 #include <linux/kvm.h>
 #include <linux/kvm_host.h>
 
+#include <kvm/arm_psci.h>
+
 #include <asm/esr.h>
+#include <asm/exception.h>
 #include <asm/kvm_asm.h>
 #include <asm/kvm_coproc.h>
 #include <asm/kvm_emulate.h>
 #include <asm/kvm_mmu.h>
-#include <asm/kvm_psci.h>
 #include <asm/debug-monitors.h>
+#include <asm/traps.h>
 
 #define CREATE_TRACE_POINTS
 #include "trace.h"
 
 typedef int (*exit_handle_fn)(struct kvm_vcpu *, struct kvm_run *);
+
+static void kvm_handle_guest_serror(struct kvm_vcpu *vcpu, u32 esr)
+{
+	if (!arm64_is_ras_serror(esr) || arm64_is_fatal_ras_serror(NULL, esr))
+		kvm_inject_vabt(vcpu);
+}
 
 static int handle_hvc(struct kvm_vcpu *vcpu, struct kvm_run *run)
 {
@@ -43,7 +52,7 @@ static int handle_hvc(struct kvm_vcpu *vcpu, struct kvm_run *run)
 			    kvm_vcpu_hvc_get_imm(vcpu));
 	vcpu->stat.hvc_exit_stat++;
 
-	ret = kvm_psci_call(vcpu);
+	ret = kvm_hvc_call_handler(vcpu);
 	if (ret < 0) {
 		vcpu_set_reg(vcpu, 0, ~0UL);
 		return 1;
@@ -54,7 +63,16 @@ static int handle_hvc(struct kvm_vcpu *vcpu, struct kvm_run *run)
 
 static int handle_smc(struct kvm_vcpu *vcpu, struct kvm_run *run)
 {
+	/*
+	 * "If an SMC instruction executed at Non-secure EL1 is
+	 * trapped to EL2 because HCR_EL2.TSC is 1, the exception is a
+	 * Trap exception, not a Secure Monitor Call exception [...]"
+	 *
+	 * We need to advance the PC after the trap, as it would
+	 * otherwise return to the same address...
+	 */
 	vcpu_set_reg(vcpu, 0, ~0UL);
+	kvm_skip_instr(vcpu, kvm_vcpu_trap_il_is32bit(vcpu));
 	return 1;
 }
 
@@ -155,6 +173,23 @@ static int handle_sve(struct kvm_vcpu *vcpu, struct kvm_run *run)
 	return 1;
 }
 
+/*
+ * Guest usage of a ptrauth instruction (which the guest EL1 did not turn into
+ * a NOP).
+ */
+static int kvm_handle_ptrauth(struct kvm_vcpu *vcpu, struct kvm_run *run)
+{
+	/*
+	 * We don't currently support ptrauth in a guest, and we mask the ID
+	 * registers to prevent well-behaved guests from trying to make use of
+	 * it.
+	 *
+	 * Inject an UNDEF, as if the feature really isn't present.
+	 */
+	kvm_inject_undefined(vcpu);
+	return 1;
+}
+
 static exit_handle_fn arm_exit_handlers[] = {
 	[0 ... ESR_ELx_EC_MAX]	= kvm_handle_unknown_ec,
 	[ESR_ELx_EC_WFx]	= kvm_handle_wfx,
@@ -177,6 +212,7 @@ static exit_handle_fn arm_exit_handlers[] = {
 	[ESR_ELx_EC_BKPT32]	= kvm_handle_guest_debug,
 	[ESR_ELx_EC_BRK64]	= kvm_handle_guest_debug,
 	[ESR_ELx_EC_FP_ASIMD]	= handle_no_fpsimd,
+	[ESR_ELx_EC_PAC]	= kvm_handle_ptrauth,
 };
 
 static exit_handle_fn kvm_get_exit_handler(struct kvm_vcpu *vcpu)
@@ -211,13 +247,6 @@ static int handle_trap_exceptions(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		handled = exit_handler(vcpu, run);
 	}
 
-	/*
-	 * kvm_arm_handle_step_debug() sets the exit_reason on the kvm_run
-	 * structure if we need to return to userspace.
-	 */
-	if (handled > 0 && kvm_arm_handle_step_debug(vcpu, run))
-		handled = 0;
-
 	return handled;
 }
 
@@ -242,7 +271,6 @@ int handle_exit(struct kvm_vcpu *vcpu, struct kvm_run *run,
 			*vcpu_pc(vcpu) -= adj;
 		}
 
-		kvm_inject_vabt(vcpu);
 		return 1;
 	}
 
@@ -252,13 +280,7 @@ int handle_exit(struct kvm_vcpu *vcpu, struct kvm_run *run,
 	case ARM_EXCEPTION_IRQ:
 		return 1;
 	case ARM_EXCEPTION_EL1_SERROR:
-		kvm_inject_vabt(vcpu);
-		/* We may still need to return for single-step */
-		if (!(*vcpu_cpsr(vcpu) & DBG_SPSR_SS)
-			&& kvm_arm_handle_step_debug(vcpu, run))
-			return 0;
-		else
-			return 1;
+		return 1;
 	case ARM_EXCEPTION_TRAP:
 		return handle_trap_exceptions(vcpu, run);
 	case ARM_EXCEPTION_HYP_GONE:
@@ -268,10 +290,39 @@ int handle_exit(struct kvm_vcpu *vcpu, struct kvm_run *run,
 		 */
 		run->exit_reason = KVM_EXIT_FAIL_ENTRY;
 		return 0;
+	case ARM_EXCEPTION_IL:
+		/*
+		 * We attempted an illegal exception return.  Guest state must
+		 * have been corrupted somehow.  Give up.
+		 */
+		run->exit_reason = KVM_EXIT_FAIL_ENTRY;
+		return -EINVAL;
 	default:
 		kvm_pr_unimpl("Unsupported exception type: %d",
 			      exception_index);
 		run->exit_reason = KVM_EXIT_INTERNAL_ERROR;
 		return 0;
 	}
+}
+
+/* For exit types that need handling before we can be preempted */
+void handle_exit_early(struct kvm_vcpu *vcpu, struct kvm_run *run,
+		       int exception_index)
+{
+	if (ARM_SERROR_PENDING(exception_index)) {
+		if (this_cpu_has_cap(ARM64_HAS_RAS_EXTN)) {
+			u64 disr = kvm_vcpu_get_disr(vcpu);
+
+			kvm_handle_guest_serror(vcpu, disr_to_esr(disr));
+		} else {
+			kvm_inject_vabt(vcpu);
+		}
+
+		return;
+	}
+
+	exception_index = ARM_EXCEPTION_CODE(exception_index);
+
+	if (exception_index == ARM_EXCEPTION_EL1_SERROR)
+		kvm_handle_guest_serror(vcpu, kvm_vcpu_get_hsr(vcpu));
 }

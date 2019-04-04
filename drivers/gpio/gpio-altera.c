@@ -18,7 +18,8 @@
 
 #include <linux/io.h>
 #include <linux/module.h>
-#include <linux/of_gpio.h>
+#include <linux/gpio/driver.h>
+#include <linux/of_gpio.h> /* For of_mm_gpio_chip */
 #include <linux/platform_device.h>
 
 #define ALTERA_GPIO_MAX_NGPIO		32
@@ -31,9 +32,9 @@
 * struct altera_gpio_chip
 * @mmchip		: memory mapped chip structure.
 * @gpio_lock		: synchronization lock so that new irq/set/get requests
-			  will be blocked until the current one completes.
+*			  will be blocked until the current one completes.
 * @interrupt_trigger	: specifies the hardware configured IRQ trigger type
-			  (rising, falling, both, high)
+*			  (rising, falling, both, high)
 * @mapped_irq		: kernel mapped irq number.
 */
 struct altera_gpio_chip {

@@ -114,7 +114,7 @@ static inline void VXGE_COMPLETE_VPATH_TX(struct vxge_fifo *fifo)
 
 		/* free SKBs */
 		for (temp = completed; temp != skb_ptr; temp++)
-			dev_kfree_skb_irq(*temp);
+			dev_consume_skb_irq(*temp);
 	} while (more);
 }
 
@@ -2553,7 +2553,7 @@ static int vxge_add_isr(struct vxgedev *vdev)
 			vxge_debug_init(VXGE_ERR,
 				"%s: Defaulting to INTA",
 				vdev->ndev->name);
-				goto INTA_MODE;
+			goto INTA_MODE;
 		}
 
 		msix_idx = (vdev->vpaths[0].handle->vpath->vp_id *
@@ -3429,8 +3429,8 @@ static int vxge_device_register(struct __vxge_hw_device *hldev,
 	vxge_initialize_ethtool_ops(ndev);
 
 	/* Allocate memory for vpath */
-	vdev->vpaths = kzalloc((sizeof(struct vxge_vpath)) *
-				no_of_vpath, GFP_KERNEL);
+	vdev->vpaths = kcalloc(no_of_vpath, sizeof(struct vxge_vpath),
+			       GFP_KERNEL);
 	if (!vdev->vpaths) {
 		vxge_debug_init(VXGE_ERR,
 			"%s: vpath memory allocation failed",
@@ -3484,11 +3484,11 @@ static int vxge_device_register(struct __vxge_hw_device *hldev,
 				0,
 				&stat);
 
-	if (status == VXGE_HW_ERR_PRIVILAGED_OPEARATION)
+	if (status == VXGE_HW_ERR_PRIVILEGED_OPERATION)
 		vxge_debug_init(
 			vxge_hw_device_trace_level_get(hldev),
 			"%s: device stats clear returns"
-			"VXGE_HW_ERR_PRIVILAGED_OPEARATION", ndev->name);
+			"VXGE_HW_ERR_PRIVILEGED_OPERATION", ndev->name);
 
 	vxge_debug_entryexit(vxge_hw_device_trace_level_get(hldev),
 		"%s: %s:%d  Exiting...",

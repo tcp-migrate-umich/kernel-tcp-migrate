@@ -48,6 +48,7 @@
 #include <linux/stat.h>
 #include <linux/module.h>
 #include <linux/uio.h>
+#include <linux/user_namespace.h>
 
 #include "fuse_i.h"
 
@@ -140,10 +141,11 @@ static int cuse_open(struct inode *inode, struct file *file)
 
 static int cuse_release(struct inode *inode, struct file *file)
 {
+	struct fuse_inode *fi = get_fuse_inode(inode);
 	struct fuse_file *ff = file->private_data;
 	struct fuse_conn *fc = ff->fc;
 
-	fuse_sync_release(ff, file->f_flags);
+	fuse_sync_release(fi, ff, file->f_flags);
 	fuse_conn_put(fc);
 
 	return 0;
@@ -498,7 +500,11 @@ static int cuse_channel_open(struct inode *inode, struct file *file)
 	if (!cc)
 		return -ENOMEM;
 
-	fuse_conn_init(&cc->fc);
+	/*
+	 * Limit the cuse channel to requests that can
+	 * be represented in file->f_cred->user_ns.
+	 */
+	fuse_conn_init(&cc->fc, file->f_cred->user_ns);
 
 	fud = fuse_dev_alloc(&cc->fc);
 	if (!fud) {

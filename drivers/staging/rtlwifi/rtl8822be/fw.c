@@ -1,18 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0
 /******************************************************************************
  *
  * Copyright(c) 2016  Realtek Corporation.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * The full GNU General Public License is included in this distribution in the
- * file called LICENSE.
  *
  * Contact Information:
  * wlanfae <wlanfae@realtek.com>
@@ -93,7 +82,7 @@ static void _rtl8822be_fill_h2c_command(struct ieee80211_hw *hw, u8 element_id,
 	}
 
 	while (!bwrite_success) {
-		/* 2. Find the last BOX number which has been writen. */
+		/* 2. Find the last BOX number which has been written. */
 		boxnum = rtlhal->last_hmeboxnum;
 		switch (boxnum) {
 		case 0:
@@ -464,6 +453,8 @@ bool rtl8822b_halmac_cb_write_data_rsvd_page(struct rtl_priv *rtlpriv, u8 *buf,
 	int count;
 
 	skb = dev_alloc_skb(size);
+	if (!skb)
+		return false;
 	memcpy((u8 *)skb_put(skb, size), buf, size);
 
 	if (!_rtl8822be_send_bcn_or_cmd_packet(rtlpriv->hw, skb, BEACON_QUEUE))
@@ -495,6 +486,8 @@ bool rtl8822b_halmac_cb_write_data_h2c(struct rtl_priv *rtlpriv, u8 *buf,
 
 	/* without GFP_DMA, pci_map_single() may not work */
 	skb = __netdev_alloc_skb(NULL, size, GFP_ATOMIC | GFP_DMA);
+	if (!skb)
+		return false;
 	memcpy((u8 *)skb_put(skb, size), buf, size);
 
 	return _rtl8822be_send_bcn_or_cmd_packet(rtlpriv->hw, skb, H2C_QUEUE);
@@ -750,6 +743,8 @@ void rtl8822be_set_fw_rsvdpagepkt(struct ieee80211_hw *hw, bool b_dl_finished)
 		      u1_rsvd_page_loc, 3);
 
 	skb = dev_alloc_skb(totalpacketlen);
+	if (!skb)
+		return;
 	memcpy((u8 *)skb_put(skb, totalpacketlen), &reserved_page_packet,
 	       totalpacketlen);
 

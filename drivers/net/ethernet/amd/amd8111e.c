@@ -435,7 +435,7 @@ static int amd8111e_restart(struct net_device *dev)
 	int i,reg_val;
 
 	/* stop the chip */
-	 writel(RUN, mmio + CMD0);
+	writel(RUN, mmio + CMD0);
 
 	if(amd8111e_init_ring(dev))
 		return -ENOMEM;
@@ -649,7 +649,7 @@ static void amd8111e_free_ring(struct amd8111e_priv *lp)
 static int amd8111e_tx(struct net_device *dev)
 {
 	struct amd8111e_priv *lp = netdev_priv(dev);
-	int tx_index = lp->tx_complete_idx & TX_RING_DR_MOD_MASK;
+	int tx_index;
 	int status;
 	/* Complete all the transmit packet */
 	while (lp->tx_complete_idx != lp->tx_idx){
@@ -666,7 +666,7 @@ static int amd8111e_tx(struct net_device *dev)
 			pci_unmap_single(lp->pci_dev, lp->tx_dma_addr[tx_index],
 				  	lp->tx_skbuff[tx_index]->len,
 					PCI_DMA_TODEVICE);
-			dev_kfree_skb_irq (lp->tx_skbuff[tx_index]);
+			dev_consume_skb_irq(lp->tx_skbuff[tx_index]);
 			lp->tx_skbuff[tx_index] = NULL;
 			lp->tx_dma_addr[tx_index] = 0;
 		}
@@ -1074,16 +1074,12 @@ static int amd8111e_calc_coalesce(struct net_device *dev)
 				amd8111e_set_coalesce(dev,TX_INTR_COAL);
 				coal_conf->tx_coal_type = MEDIUM_COALESCE;
 			}
-
-		}
-		else if(tx_pkt_size >= 1024){
-			if (tx_pkt_size >= 1024){
-				if(coal_conf->tx_coal_type !=  HIGH_COALESCE){
-					coal_conf->tx_timeout = 4;
-					coal_conf->tx_event_count = 8;
-					amd8111e_set_coalesce(dev,TX_INTR_COAL);
-					coal_conf->tx_coal_type = HIGH_COALESCE;
-				}
+		} else if (tx_pkt_size >= 1024) {
+			if (coal_conf->tx_coal_type != HIGH_COALESCE) {
+				coal_conf->tx_timeout = 4;
+				coal_conf->tx_event_count = 8;
+				amd8111e_set_coalesce(dev, TX_INTR_COAL);
+				coal_conf->tx_coal_type = HIGH_COALESCE;
 			}
 		}
 	}
@@ -1724,7 +1720,7 @@ static void amd8111e_config_ipg(struct timer_list *t)
 		writew((u32)tmp_ipg, mmio + IPG);
 		writew((u32)(tmp_ipg - IFS1_DELTA), mmio + IFS1);
 	}
-	 mod_timer(&lp->ipg_data.ipg_timer, jiffies + IPG_CONVERGE_JIFFIES);
+	mod_timer(&lp->ipg_data.ipg_timer, jiffies + IPG_CONVERGE_JIFFIES);
 	return;
 
 }

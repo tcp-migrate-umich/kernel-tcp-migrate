@@ -283,7 +283,7 @@ static struct rvt_mr *__rvt_alloc_mr(int count, struct ib_pd *pd)
 
 	/* Allocate struct plus pointers to first level page tables. */
 	m = (count + RVT_SEGSZ - 1) / RVT_SEGSZ;
-	mr = kzalloc(sizeof(*mr) + m * sizeof(mr->mr.map[0]), GFP_KERNEL);
+	mr = kzalloc(struct_size(mr, mr.map, m), GFP_KERNEL);
 	if (!mr)
 		goto bail;
 
@@ -381,15 +381,14 @@ struct ib_mr *rvt_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 {
 	struct rvt_mr *mr;
 	struct ib_umem *umem;
-	struct scatterlist *sg;
-	int n, m, entry;
+	struct sg_page_iter sg_iter;
+	int n, m;
 	struct ib_mr *ret;
 
 	if (length == 0)
 		return ERR_PTR(-EINVAL);
 
-	umem = ib_umem_get(pd->uobject->context, start, length,
-			   mr_access_flags, 0);
+	umem = ib_umem_get(udata, start, length, mr_access_flags, 0);
 	if (IS_ERR(umem))
 		return (void *)umem;
 
@@ -408,23 +407,21 @@ struct ib_mr *rvt_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 	mr->mr.access_flags = mr_access_flags;
 	mr->umem = umem;
 
-	mr->mr.page_shift = umem->page_shift;
+	mr->mr.page_shift = PAGE_SHIFT;
 	m = 0;
 	n = 0;
-	for_each_sg(umem->sg_head.sgl, sg, umem->nmap, entry) {
+	for_each_sg_page (umem->sg_head.sgl, &sg_iter, umem->nmap, 0) {
 		void *vaddr;
 
-		vaddr = page_address(sg_page(sg));
+		vaddr = page_address(sg_page_iter_page(&sg_iter));
 		if (!vaddr) {
 			ret = ERR_PTR(-EINVAL);
 			goto bail_inval;
 		}
 		mr->mr.map[m]->segs[n].vaddr = vaddr;
-		mr->mr.map[m]->segs[n].length = BIT(umem->page_shift);
-		trace_rvt_mr_user_seg(&mr->mr, m, n, vaddr,
-				      BIT(umem->page_shift));
-		n++;
-		if (n == RVT_SEGSZ) {
+		mr->mr.map[m]->segs[n].length = PAGE_SIZE;
+		trace_rvt_mr_user_seg(&mr->mr, m, n, vaddr, PAGE_SIZE);
+		if (++n == RVT_SEGSZ) {
 			m++;
 			n = 0;
 		}
@@ -489,11 +486,13 @@ static int rvt_check_refs(struct rvt_mregion *mr, const char *t)
 	unsigned long timeout;
 	struct rvt_dev_info *rdi = ib_to_rvt(mr->pd->device);
 
-	if (percpu_ref_is_zero(&mr->refcount))
-		return 0;
-	/* avoid dma mr */
-	if (mr->lkey)
+	if (mr->lkey) {
+		/* avoid dma mr */
 		rvt_dereg_clean_qps(mr);
+		/* @mr was indexed on rcu protected @lkey_table */
+		synchronize_rcu();
+	}
+
 	timeout = wait_for_completion_timeout(&mr->comp, 5 * HZ);
 	if (!timeout) {
 		rvt_pr_err(rdi,
@@ -728,7 +727,7 @@ struct ib_fmr *rvt_alloc_fmr(struct ib_pd *pd, int mr_access_flags,
 
 	/* Allocate struct plus pointers to first level page tables. */
 	m = (fmr_attr->max_pages + RVT_SEGSZ - 1) / RVT_SEGSZ;
-	fmr = kzalloc(sizeof(*fmr) + m * sizeof(fmr->mr.map[0]), GFP_KERNEL);
+	fmr = kzalloc(struct_size(fmr, mr.map, m), GFP_KERNEL);
 	if (!fmr)
 		goto bail;
 
@@ -768,7 +767,7 @@ bail:
 
 /**
  * rvt_map_phys_fmr - set up a fast memory region
- * @ibmfr: the fast memory region to set up
+ * @ibfmr: the fast memory region to set up
  * @page_list: the list of pages to associate with the fast memory region
  * @list_len: the number of pages to associate with the fast memory region
  * @iova: the virtual address of the start of the fast memory region

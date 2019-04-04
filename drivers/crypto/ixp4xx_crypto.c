@@ -261,11 +261,10 @@ static int setup_crypt_desc(void)
 	struct device *dev = &pdev->dev;
 	BUILD_BUG_ON(sizeof(struct crypt_ctl) != 64);
 	crypt_virt = dma_alloc_coherent(dev,
-			NPE_QLEN * sizeof(struct crypt_ctl),
-			&crypt_phys, GFP_ATOMIC);
+					NPE_QLEN * sizeof(struct crypt_ctl),
+					&crypt_phys, GFP_ATOMIC);
 	if (!crypt_virt)
 		return -ENOMEM;
-	memset(crypt_virt, 0, NPE_QLEN * sizeof(struct crypt_ctl));
 	return 0;
 }
 
@@ -848,7 +847,7 @@ static int ablk_setkey(struct crypto_ablkcipher *tfm, const u8 *key,
 		goto out;
 
 	if (*flags & CRYPTO_TFM_RES_WEAK_KEY) {
-		if (*flags & CRYPTO_TFM_REQ_WEAK_KEY) {
+		if (*flags & CRYPTO_TFM_REQ_FORBID_WEAK_KEYS) {
 			ret = -EINVAL;
 		} else {
 			*flags &= ~CRYPTO_TFM_RES_WEAK_KEY;
@@ -1126,7 +1125,7 @@ static int aead_setup(struct crypto_aead *tfm, unsigned int authsize)
 		goto out;
 
 	if (*flags & CRYPTO_TFM_RES_WEAK_KEY) {
-		if (*flags & CRYPTO_TFM_REQ_WEAK_KEY) {
+		if (*flags & CRYPTO_TFM_REQ_FORBID_WEAK_KEYS) {
 			ret = -EINVAL;
 			goto out;
 		} else {
@@ -1168,9 +1167,11 @@ static int aead_setkey(struct crypto_aead *tfm, const u8 *key,
 	ctx->authkey_len = keys.authkeylen;
 	ctx->enckey_len = keys.enckeylen;
 
+	memzero_explicit(&keys, sizeof(keys));
 	return aead_setup(tfm, crypto_aead_authsize(tfm));
 badkey:
 	crypto_aead_set_flags(tfm, CRYPTO_TFM_RES_BAD_KEY_LEN);
+	memzero_explicit(&keys, sizeof(keys));
 	return -EINVAL;
 }
 
@@ -1193,7 +1194,6 @@ static struct ixp_alg ixp4xx_algos[] = {
 			.min_keysize	= DES_KEY_SIZE,
 			.max_keysize	= DES_KEY_SIZE,
 			.ivsize		= DES_BLOCK_SIZE,
-			.geniv		= "eseqiv",
 			}
 		}
 	},
@@ -1220,7 +1220,6 @@ static struct ixp_alg ixp4xx_algos[] = {
 			.min_keysize	= DES3_EDE_KEY_SIZE,
 			.max_keysize	= DES3_EDE_KEY_SIZE,
 			.ivsize		= DES3_EDE_BLOCK_SIZE,
-			.geniv		= "eseqiv",
 			}
 		}
 	},
@@ -1246,7 +1245,6 @@ static struct ixp_alg ixp4xx_algos[] = {
 			.min_keysize	= AES_MIN_KEY_SIZE,
 			.max_keysize	= AES_MAX_KEY_SIZE,
 			.ivsize		= AES_BLOCK_SIZE,
-			.geniv		= "eseqiv",
 			}
 		}
 	},
@@ -1272,7 +1270,6 @@ static struct ixp_alg ixp4xx_algos[] = {
 			.min_keysize	= AES_MIN_KEY_SIZE,
 			.max_keysize	= AES_MAX_KEY_SIZE,
 			.ivsize		= AES_BLOCK_SIZE,
-			.geniv		= "eseqiv",
 			}
 		}
 	},
@@ -1286,7 +1283,6 @@ static struct ixp_alg ixp4xx_algos[] = {
 			.min_keysize	= AES_MIN_KEY_SIZE,
 			.max_keysize	= AES_MAX_KEY_SIZE,
 			.ivsize		= AES_BLOCK_SIZE,
-			.geniv		= "eseqiv",
 			.setkey		= ablk_rfc3686_setkey,
 			.encrypt	= ablk_rfc3686_crypt,
 			.decrypt	= ablk_rfc3686_crypt }

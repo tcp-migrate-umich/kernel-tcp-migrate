@@ -307,7 +307,7 @@ static DEVICE_ATTR_RO(pwm1_mode);
 static DEVICE_ATTR_RO(fan1_min);
 static DEVICE_ATTR_RO(fan1_max);
 static DEVICE_ATTR_RO(fan1_input);
-static DEVICE_ATTR(fan1_target, S_IRUGO | S_IWUSR, fan1_input_show, set_rpm);
+static DEVICE_ATTR(fan1_target, 0644, fan1_input_show, set_rpm);
 
 static umode_t gpio_fan_is_visible(struct kobject *kobj,
 				   struct attribute *attr, int index)
@@ -441,8 +441,8 @@ static int gpio_fan_get_of_data(struct gpio_fan_data *fan_data)
 		dev_err(dev, "DT properties empty / missing");
 		return -ENODEV;
 	}
-	gpios = devm_kzalloc(dev,
-			     fan_data->num_gpios * sizeof(struct gpio_desc *),
+	gpios = devm_kcalloc(dev,
+			     fan_data->num_gpios, sizeof(struct gpio_desc *),
 			     GFP_KERNEL);
 	if (!gpios)
 		return -ENOMEM;
@@ -471,8 +471,8 @@ static int gpio_fan_get_of_data(struct gpio_fan_data *fan_data)
 	 * Speed map is in the form <RPM ctrl_val RPM ctrl_val ...>
 	 * this needs splitting into pairs to create gpio_fan_speed structs
 	 */
-	speed = devm_kzalloc(dev,
-			fan_data->num_speed * sizeof(struct gpio_fan_speed),
+	speed = devm_kcalloc(dev,
+			fan_data->num_speed, sizeof(struct gpio_fan_speed),
 			GFP_KERNEL);
 	if (!speed)
 		return -ENOMEM;

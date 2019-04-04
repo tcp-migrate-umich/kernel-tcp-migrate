@@ -282,7 +282,7 @@ struct dn_fib_info *dn_fib_create_info(const struct rtmsg *r, struct nlattr *att
 	    (nhs = dn_fib_count_nhs(attrs[RTA_MULTIPATH])) == 0)
 		goto err_inval;
 
-	fi = kzalloc(sizeof(*fi)+nhs*sizeof(struct dn_fib_nh), GFP_KERNEL);
+	fi = kzalloc(struct_size(fi, fib_nh, nhs), GFP_KERNEL);
 	err = -ENOBUFS;
 	if (fi == NULL)
 		goto failure;
@@ -792,8 +792,8 @@ void __init dn_fib_init(void)
 
 	register_dnaddr_notifier(&dn_fib_dnaddr_notifier);
 
-	rtnl_register(PF_DECnet, RTM_NEWROUTE, dn_fib_rtm_newroute, NULL, 0);
-	rtnl_register(PF_DECnet, RTM_DELROUTE, dn_fib_rtm_delroute, NULL, 0);
+	rtnl_register_module(THIS_MODULE, PF_DECnet, RTM_NEWROUTE,
+			     dn_fib_rtm_newroute, NULL, 0);
+	rtnl_register_module(THIS_MODULE, PF_DECnet, RTM_DELROUTE,
+			     dn_fib_rtm_delroute, NULL, 0);
 }
-
-

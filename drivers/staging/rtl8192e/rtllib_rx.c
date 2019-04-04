@@ -913,7 +913,7 @@ static size_t rtllib_rx_get_hdrlen(struct rtllib_device *ieee,
 		rx_stats->bContainHTC = true;
 	}
 
-	 if (RTLLIB_QOS_HAS_SEQ(fc))
+	if (RTLLIB_QOS_HAS_SEQ(fc))
 		rx_stats->bIsQosData = true;
 
 	return hdrlen;
@@ -1317,7 +1317,6 @@ static int rtllib_rx_InfraAdhoc(struct rtllib_device *ieee, struct sk_buff *skb,
 	bool bToOtherSTA = false;
 	int ret = 0, i = 0;
 
-	hdr = (struct rtllib_hdr_4addr *)skb->data;
 	fc = le16_to_cpu(hdr->frame_ctl);
 	type = WLAN_FC_GET_TYPE(fc);
 	stype = WLAN_FC_GET_STYPE(fc);
@@ -1813,7 +1812,7 @@ static inline void rtllib_extract_country_ie(
 					netdev_info(ieee->dev,
 						    "Received beacon ContryIE, SSID: <%s>\n",
 						    network->ssid);
-				Dot11d_UpdateCountryIe(ieee, addr2,
+				dot11d_update_country(ieee, addr2,
 						       info_element->len,
 						       info_element->data);
 			}
@@ -2645,8 +2644,8 @@ static inline void rtllib_process_probe_response(
 	   (network->ssid_len ? 1 : 0))) {
 		update_network(ieee, &ieee->current_network, network);
 		if ((ieee->current_network.mode == IEEE_N_24G ||
-		     ieee->current_network.mode == IEEE_G)
-		     && ieee->current_network.berp_info_valid) {
+		     ieee->current_network.mode == IEEE_G) &&
+		    ieee->current_network.berp_info_valid) {
 			if (ieee->current_network.erp_value & ERP_UseProtection)
 				ieee->current_network.buseprotection = true;
 			else

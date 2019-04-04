@@ -1,18 +1,7 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /******************************************************************************
  *
  * Copyright(c) 2009-2012  Realtek Corporation.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * The full GNU General Public License is included in this distribution in the
- * file called LICENSE.
  *
  * Contact Information:
  * wlanfae <wlanfae@realtek.com>
@@ -216,7 +205,8 @@ struct rtl_pci {
 	/*Bcn control register setting */
 	u32 reg_bcn_ctrl_val;
 
-	 /*ASPM*/ u8 const_pci_aspm;
+	/*ASPM*/
+	u8 const_pci_aspm;
 	u8 const_amdpci_aspm;
 	u8 const_hwsw_rfoff_d3;
 	u8 const_support_pciaspm;

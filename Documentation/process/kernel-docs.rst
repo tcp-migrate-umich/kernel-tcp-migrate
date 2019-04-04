@@ -58,7 +58,7 @@ On-line docs
     * Title: **Linux Kernel Mailing List Glossary**
 
       :Author: various
-      :URL: http://kernelnewbies.org/glossary/
+      :URL: https://kernelnewbies.org/KernelGlossary
       :Date: rolling version
       :Keywords: glossary, terms, linux-kernel.
       :Description: From the introduction: "This glossary is intended as
@@ -565,7 +565,7 @@ Miscellaneous
 
     * Name: **Cross-Referencing Linux**
 
-      :URL: http://lxr.free-electrons.com/
+      :URL: https://elixir.bootlin.com/
       :Keywords: Browsing source code.
       :Description: Another web-based Linux kernel source code browser.
         Lots of cross references to variables and functions. You can see

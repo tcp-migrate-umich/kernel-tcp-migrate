@@ -30,26 +30,22 @@
 #include "ipp.h"
 #include "timing_generator.h"
 
+#define DC_LOGGER dc->ctx->logger
+
 /*******************************************************************************
  * Private functions
  ******************************************************************************/
-#define TMDS_MAX_PIXEL_CLOCK_IN_KHZ_UPMOST 297000
-static void update_stream_signal(struct dc_stream_state *stream)
+void update_stream_signal(struct dc_stream_state *stream, struct dc_sink *sink)
 {
-	if (stream->output_signal == SIGNAL_TYPE_NONE) {
-		struct dc_sink *dc_sink = stream->sink;
-
-		if (dc_sink->sink_signal == SIGNAL_TYPE_NONE)
-			stream->signal = stream->sink->link->connector_signal;
-		else
-			stream->signal = dc_sink->sink_signal;
-	} else {
-		stream->signal = stream->output_signal;
-	}
+	if (sink->sink_signal == SIGNAL_TYPE_NONE)
+		stream->signal = stream->link->connector_signal;
+	else
+		stream->signal = sink->sink_signal;
 
 	if (dc_is_dvi_signal(stream->signal)) {
-		if (stream->timing.pix_clk_khz > TMDS_MAX_PIXEL_CLOCK_IN_KHZ_UPMOST &&
-			stream->sink->sink_signal != SIGNAL_TYPE_DVI_SINGLE_LINK)
+		if (stream->ctx->dc->caps.dual_link_dvi &&
+		    (stream->timing.pix_clk_100hz / 10) > TMDS_MAX_PIXEL_CLOCK &&
+		    sink->sink_signal != SIGNAL_TYPE_DVI_SINGLE_LINK)
 			stream->signal = SIGNAL_TYPE_DVI_DUAL_LINK;
 		else
 			stream->signal = SIGNAL_TYPE_DVI_SINGLE_LINK;
@@ -62,9 +58,14 @@ static void construct(struct dc_stream_state *stream,
 	uint32_t i = 0;
 
 	stream->sink = dc_sink_data;
-	stream->ctx = stream->sink->ctx;
-
 	dc_sink_retain(dc_sink_data);
+
+	stream->ctx = dc_sink_data->ctx;
+	stream->link = dc_sink_data->link;
+	stream->sink_patches = dc_sink_data->edid_caps.panel_patch;
+	stream->converter_disable_audio = dc_sink_data->converter_disable_audio;
+	stream->qs_bit = dc_sink_data->edid_caps.qs_bit;
+	stream->qy_bit = dc_sink_data->edid_caps.qy_bit;
 
 	/* Copy audio modes */
 	/* TODO - Remove this translation */
@@ -101,17 +102,21 @@ static void construct(struct dc_stream_state *stream,
 	/* EDID CAP translation for HDMI 2.0 */
 	stream->timing.flags.LTE_340MCSC_SCRAMBLE = dc_sink_data->edid_caps.lte_340mcsc_scramble;
 
-	stream->status.link = stream->sink->link;
+	update_stream_signal(stream, dc_sink_data);
 
-	update_stream_signal(stream);
+	stream->out_transfer_func = dc_create_transfer_func();
+	stream->out_transfer_func->type = TF_TYPE_BYPASS;
+	stream->out_transfer_func->ctx = stream->ctx;
+
+	stream->stream_id = stream->ctx->dc_stream_id_count;
+	stream->ctx->dc_stream_id_count++;
 }
 
 static void destruct(struct dc_stream_state *stream)
 {
 	dc_sink_release(stream->sink);
 	if (stream->out_transfer_func != NULL) {
-		dc_transfer_func_release(
-				stream->out_transfer_func);
+		dc_transfer_func_release(stream->out_transfer_func);
 		stream->out_transfer_func = NULL;
 	}
 }
@@ -155,22 +160,44 @@ struct dc_stream_state *dc_create_stream_for_sink(
 	return stream;
 }
 
-struct dc_stream_status *dc_stream_get_status(
+/**
+ * dc_stream_get_status_from_state - Get stream status from given dc state
+ * @state: DC state to find the stream status in
+ * @stream: The stream to get the stream status for
+ *
+ * The given stream is expected to exist in the given dc state. Otherwise, NULL
+ * will be returned.
+ */
+struct dc_stream_status *dc_stream_get_status_from_state(
+	struct dc_state *state,
 	struct dc_stream_state *stream)
 {
 	uint8_t i;
-	struct dc  *dc = stream->ctx->dc;
 
-	for (i = 0; i < dc->current_state->stream_count; i++) {
-		if (stream == dc->current_state->streams[i])
-			return &dc->current_state->stream_status[i];
+	for (i = 0; i < state->stream_count; i++) {
+		if (stream == state->streams[i])
+			return &state->stream_status[i];
 	}
 
 	return NULL;
 }
 
 /**
- * Update the cursor attributes and set cursor surface address
+ * dc_stream_get_status() - Get current stream status of the given stream state
+ * @stream: The stream to get the stream status for.
+ *
+ * The given stream is expected to exist in dc->current_state. Otherwise, NULL
+ * will be returned.
+ */
+struct dc_stream_status *dc_stream_get_status(
+	struct dc_stream_state *stream)
+{
+	struct dc *dc = stream->ctx->dc;
+	return dc_stream_get_status_from_state(dc->current_state, stream);
+}
+
+/**
+ * dc_stream_set_cursor_attributes() - Update cursor attributes and set cursor surface address
  */
 bool dc_stream_set_cursor_attributes(
 	struct dc_stream_state *stream,
@@ -179,6 +206,7 @@ bool dc_stream_set_cursor_attributes(
 	int i;
 	struct dc  *core_dc;
 	struct resource_context *res_ctx;
+	struct pipe_ctx *pipe_to_program = NULL;
 
 	if (NULL == stream) {
 		dm_error("DC: dc_stream is NULL!\n");
@@ -196,43 +224,26 @@ bool dc_stream_set_cursor_attributes(
 
 	core_dc = stream->ctx->dc;
 	res_ctx = &core_dc->current_state->res_ctx;
+	stream->cursor_attributes = *attributes;
 
 	for (i = 0; i < MAX_PIPES; i++) {
 		struct pipe_ctx *pipe_ctx = &res_ctx->pipe_ctx[i];
 
-		if (pipe_ctx->stream != stream || (!pipe_ctx->plane_res.xfm && !pipe_ctx->plane_res.dpp))
-			continue;
-		if (pipe_ctx->top_pipe && pipe_ctx->plane_state != pipe_ctx->top_pipe->plane_state)
+		if (pipe_ctx->stream != stream)
 			continue;
 
+		if (!pipe_to_program) {
+			pipe_to_program = pipe_ctx;
+			core_dc->hwss.pipe_control_lock(core_dc, pipe_to_program, true);
+		}
 
-		if (pipe_ctx->plane_res.ipp->funcs->ipp_cursor_set_attributes != NULL)
-			pipe_ctx->plane_res.ipp->funcs->ipp_cursor_set_attributes(
-						pipe_ctx->plane_res.ipp, attributes);
-
-		if (pipe_ctx->plane_res.hubp != NULL &&
-				pipe_ctx->plane_res.hubp->funcs->set_cursor_attributes != NULL)
-			pipe_ctx->plane_res.hubp->funcs->set_cursor_attributes(
-					pipe_ctx->plane_res.hubp, attributes);
-
-		if (pipe_ctx->plane_res.mi != NULL &&
-				pipe_ctx->plane_res.mi->funcs->set_cursor_attributes != NULL)
-			pipe_ctx->plane_res.mi->funcs->set_cursor_attributes(
-					pipe_ctx->plane_res.mi, attributes);
-
-
-		if (pipe_ctx->plane_res.xfm != NULL &&
-				pipe_ctx->plane_res.xfm->funcs->set_cursor_attributes != NULL)
-			pipe_ctx->plane_res.xfm->funcs->set_cursor_attributes(
-				pipe_ctx->plane_res.xfm, attributes);
-
-		if (pipe_ctx->plane_res.dpp != NULL &&
-				pipe_ctx->plane_res.dpp->funcs->set_cursor_attributes != NULL)
-			pipe_ctx->plane_res.dpp->funcs->set_cursor_attributes(
-				pipe_ctx->plane_res.dpp, attributes);
+		core_dc->hwss.set_cursor_attribute(pipe_ctx);
+		if (core_dc->hwss.set_cursor_sdr_white_level)
+			core_dc->hwss.set_cursor_sdr_white_level(pipe_ctx);
 	}
 
-	stream->cursor_attributes = *attributes;
+	if (pipe_to_program)
+		core_dc->hwss.pipe_control_lock(core_dc, pipe_to_program, false);
 
 	return true;
 }
@@ -244,6 +255,7 @@ bool dc_stream_set_cursor_position(
 	int i;
 	struct dc  *core_dc;
 	struct resource_context *res_ctx;
+	struct pipe_ctx *pipe_to_program = NULL;
 
 	if (NULL == stream) {
 		dm_error("DC: dc_stream is NULL!\n");
@@ -257,52 +269,28 @@ bool dc_stream_set_cursor_position(
 
 	core_dc = stream->ctx->dc;
 	res_ctx = &core_dc->current_state->res_ctx;
+	stream->cursor_position = *position;
 
 	for (i = 0; i < MAX_PIPES; i++) {
 		struct pipe_ctx *pipe_ctx = &res_ctx->pipe_ctx[i];
-		struct input_pixel_processor *ipp = pipe_ctx->plane_res.ipp;
-		struct mem_input *mi = pipe_ctx->plane_res.mi;
-		struct hubp *hubp = pipe_ctx->plane_res.hubp;
-		struct dpp *dpp = pipe_ctx->plane_res.dpp;
-		struct dc_cursor_position pos_cpy = *position;
-		struct dc_cursor_mi_param param = {
-			.pixel_clk_khz = stream->timing.pix_clk_khz,
-			.ref_clk_khz = core_dc->res_pool->ref_clock_inKhz,
-			.viewport_x_start = pipe_ctx->plane_res.scl_data.viewport.x,
-			.viewport_width = pipe_ctx->plane_res.scl_data.viewport.width,
-			.h_scale_ratio = pipe_ctx->plane_res.scl_data.ratios.horz
-		};
 
 		if (pipe_ctx->stream != stream ||
 				(!pipe_ctx->plane_res.mi  && !pipe_ctx->plane_res.hubp) ||
 				!pipe_ctx->plane_state ||
-				(!pipe_ctx->plane_res.xfm && !pipe_ctx->plane_res.dpp))
+				(!pipe_ctx->plane_res.xfm && !pipe_ctx->plane_res.dpp) ||
+				!pipe_ctx->plane_res.ipp)
 			continue;
 
-		if (pipe_ctx->plane_state->address.type
-				== PLN_ADDR_TYPE_VIDEO_PROGRESSIVE)
-			pos_cpy.enable = false;
+		if (!pipe_to_program) {
+			pipe_to_program = pipe_ctx;
+			core_dc->hwss.pipe_control_lock(core_dc, pipe_to_program, true);
+		}
 
-		if (pipe_ctx->top_pipe && pipe_ctx->plane_state != pipe_ctx->top_pipe->plane_state)
-			pos_cpy.enable = false;
-
-
-		if (ipp != NULL && ipp->funcs->ipp_cursor_set_position != NULL)
-			ipp->funcs->ipp_cursor_set_position(ipp, &pos_cpy, &param);
-
-		if (mi != NULL && mi->funcs->set_cursor_position != NULL)
-			mi->funcs->set_cursor_position(mi, &pos_cpy, &param);
-
-		if (!hubp)
-			continue;
-
-		if (hubp->funcs->set_cursor_position != NULL)
-			hubp->funcs->set_cursor_position(hubp, &pos_cpy, &param);
-
-		if (dpp != NULL && dpp->funcs->set_cursor_position != NULL)
-			dpp->funcs->set_cursor_position(dpp, &pos_cpy, &param, hubp->curs_attr.width);
-
+		core_dc->hwss.set_cursor_position(pipe_ctx);
 	}
+
+	if (pipe_to_program)
+		core_dc->hwss.pipe_control_lock(core_dc, pipe_to_program, false);
 
 	return true;
 }
@@ -357,16 +345,10 @@ bool dc_stream_get_scanoutpos(const struct dc_stream_state *stream,
 	return ret;
 }
 
-
-void dc_stream_log(
-	const struct dc_stream_state *stream,
-	struct dal_logger *dm_logger,
-	enum dc_log_type log_type)
+void dc_stream_log(const struct dc *dc, const struct dc_stream_state *stream)
 {
-
-	dm_logger_write(dm_logger,
-			log_type,
-			"core_stream 0x%x: src: %d, %d, %d, %d; dst: %d, %d, %d, %d, colorSpace:%d\n",
+	DC_LOG_DC(
+			"core_stream 0x%p: src: %d, %d, %d, %d; dst: %d, %d, %d, %d, colorSpace:%d\n",
 			stream,
 			stream->src.x,
 			stream->src.y,
@@ -377,21 +359,14 @@ void dc_stream_log(
 			stream->dst.width,
 			stream->dst.height,
 			stream->output_color_space);
-	dm_logger_write(dm_logger,
-			log_type,
+	DC_LOG_DC(
 			"\tpix_clk_khz: %d, h_total: %d, v_total: %d, pixelencoder:%d, displaycolorDepth:%d\n",
-			stream->timing.pix_clk_khz,
+			stream->timing.pix_clk_100hz / 10,
 			stream->timing.h_total,
 			stream->timing.v_total,
 			stream->timing.pixel_encoding,
 			stream->timing.display_color_depth);
-	dm_logger_write(dm_logger,
-			log_type,
-			"\tsink name: %s, serial: %d\n",
-			stream->sink->edid_caps.display_name,
-			stream->sink->edid_caps.serial_number);
-	dm_logger_write(dm_logger,
-			log_type,
+	DC_LOG_DC(
 			"\tlink: %d\n",
-			stream->sink->link->link_index);
+			stream->link->link_index);
 }

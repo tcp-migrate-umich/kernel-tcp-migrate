@@ -52,13 +52,6 @@
 
 #include "pvrdma.h"
 
-int pvrdma_post_srq_recv(struct ib_srq *ibsrq, struct ib_recv_wr *wr,
-			 struct ib_recv_wr **bad_wr)
-{
-	/* No support for kernel clients. */
-	return -EOPNOTSUPP;
-}
-
 /**
  * pvrdma_query_srq - query shared receive queue
  * @ibsrq: the shared receive queue to query
@@ -113,11 +106,12 @@ struct ib_srq *pvrdma_create_srq(struct ib_pd *pd,
 	union pvrdma_cmd_resp rsp;
 	struct pvrdma_cmd_create_srq *cmd = &req.create_srq;
 	struct pvrdma_cmd_create_srq_resp *resp = &rsp.create_srq_resp;
+	struct pvrdma_create_srq_resp srq_resp = {0};
 	struct pvrdma_create_srq ucmd;
 	unsigned long flags;
 	int ret;
 
-	if (!(pd->uobject && udata)) {
+	if (!udata) {
 		/* No support for kernel clients. */
 		dev_warn(&dev->pdev->dev,
 			 "no shared receive queue support for kernel client\n");
@@ -159,9 +153,7 @@ struct ib_srq *pvrdma_create_srq(struct ib_pd *pd,
 		goto err_srq;
 	}
 
-	srq->umem = ib_umem_get(pd->uobject->context,
-				ucmd.buf_addr,
-				ucmd.buf_size, 0, 0);
+	srq->umem = ib_umem_get(udata, ucmd.buf_addr, ucmd.buf_size, 0, 0);
 	if (IS_ERR(srq->umem)) {
 		ret = PTR_ERR(srq->umem);
 		goto err_srq;
@@ -204,12 +196,13 @@ struct ib_srq *pvrdma_create_srq(struct ib_pd *pd,
 	}
 
 	srq->srq_handle = resp->srqn;
+	srq_resp.srqn = resp->srqn;
 	spin_lock_irqsave(&dev->srq_tbl_lock, flags);
 	dev->srq_tbl[srq->srq_handle % dev->dsr->caps.max_srq] = srq;
 	spin_unlock_irqrestore(&dev->srq_tbl_lock, flags);
 
 	/* Copy udata back. */
-	if (ib_copy_to_udata(udata, &srq->srq_handle, sizeof(__u32))) {
+	if (ib_copy_to_udata(udata, &srq_resp, sizeof(srq_resp))) {
 		dev_warn(&dev->pdev->dev, "failed to copy back udata\n");
 		pvrdma_destroy_srq(&srq->ibsrq);
 		return ERR_PTR(-EINVAL);

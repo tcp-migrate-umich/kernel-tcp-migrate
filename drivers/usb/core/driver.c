@@ -342,8 +342,8 @@ static int usb_probe_interface(struct device *dev)
 	if (driver->disable_hub_initiated_lpm) {
 		lpm_disable_error = usb_unlocked_disable_lpm(udev);
 		if (lpm_disable_error) {
-			dev_err(&intf->dev, "%s Failed to disable LPM for driver %s\n.",
-					__func__, driver->name);
+			dev_err(&intf->dev, "%s Failed to disable LPM for driver %s\n",
+				__func__, driver->name);
 			error = lpm_disable_error;
 			goto err;
 		}
@@ -510,9 +510,7 @@ int usb_driver_claim_interface(struct usb_driver *driver,
 				struct usb_interface *iface, void *priv)
 {
 	struct device *dev;
-	struct usb_device *udev;
 	int retval = 0;
-	int lpm_disable_error = -ENODEV;
 
 	if (!iface)
 		return -ENODEV;
@@ -525,23 +523,11 @@ int usb_driver_claim_interface(struct usb_driver *driver,
 	if (!iface->authorized)
 		return -ENODEV;
 
-	udev = interface_to_usbdev(iface);
-
 	dev->driver = &driver->drvwrap.driver;
 	usb_set_intfdata(iface, priv);
 	iface->needs_binding = 0;
 
 	iface->condition = USB_INTERFACE_BOUND;
-
-	/* See the comment about disabling LPM in usb_probe_interface(). */
-	if (driver->disable_hub_initiated_lpm) {
-		lpm_disable_error = usb_unlocked_disable_lpm(udev);
-		if (lpm_disable_error) {
-			dev_err(&iface->dev, "%s Failed to disable LPM for driver %s\n.",
-					__func__, driver->name);
-			return -ENOMEM;
-		}
-	}
 
 	/* Claimed interfaces are initially inactive (suspended) and
 	 * runtime-PM-enabled, but only if the driver has autosuspend
@@ -561,9 +547,20 @@ int usb_driver_claim_interface(struct usb_driver *driver,
 	if (device_is_registered(dev))
 		retval = device_bind_driver(dev);
 
-	/* Attempt to re-enable USB3 LPM, if the disable was successful. */
-	if (!lpm_disable_error)
-		usb_unlocked_enable_lpm(udev);
+	if (retval) {
+		dev->driver = NULL;
+		usb_set_intfdata(iface, NULL);
+		iface->needs_remote_wakeup = 0;
+		iface->condition = USB_INTERFACE_UNBOUND;
+
+		/*
+		 * Unbound interfaces are always runtime-PM-disabled
+		 * and runtime-PM-suspended
+		 */
+		if (driver->supports_autosuspend)
+			pm_runtime_disable(dev);
+		pm_runtime_set_suspended(dev);
+	}
 
 	return retval;
 }
@@ -1070,7 +1067,7 @@ static void usb_rebind_intf(struct usb_interface *intf)
 	if (!intf->dev.power.is_prepared) {
 		intf->needs_binding = 0;
 		rc = device_attach(&intf->dev);
-		if (rc < 0)
+		if (rc < 0 && rc != -EPROBE_DEFER)
 			dev_warn(&intf->dev, "rebind failed: %d\n", rc);
 	}
 }
@@ -1899,13 +1896,10 @@ int usb_runtime_idle(struct device *dev)
 	return -EBUSY;
 }
 
-int usb_set_usb2_hardware_lpm(struct usb_device *udev, int enable)
+static int usb_set_usb2_hardware_lpm(struct usb_device *udev, int enable)
 {
 	struct usb_hcd *hcd = bus_to_hcd(udev->bus);
 	int ret = -EPERM;
-
-	if (enable && !udev->usb2_hw_lpm_allowed)
-		return 0;
 
 	if (hcd->driver->set_usb2_hw_lpm) {
 		ret = hcd->driver->set_usb2_hw_lpm(hcd, udev, enable);
@@ -1916,10 +1910,29 @@ int usb_set_usb2_hardware_lpm(struct usb_device *udev, int enable)
 	return ret;
 }
 
+int usb_enable_usb2_hardware_lpm(struct usb_device *udev)
+{
+	if (!udev->usb2_hw_lpm_capable ||
+	    !udev->usb2_hw_lpm_allowed ||
+	    udev->usb2_hw_lpm_enabled)
+		return 0;
+
+	return usb_set_usb2_hardware_lpm(udev, 1);
+}
+
+int usb_disable_usb2_hardware_lpm(struct usb_device *udev)
+{
+	if (!udev->usb2_hw_lpm_enabled)
+		return 0;
+
+	return usb_set_usb2_hardware_lpm(udev, 0);
+}
+
 #endif /* CONFIG_PM */
 
 struct bus_type usb_bus_type = {
 	.name =		"usb",
 	.match =	usb_device_match,
 	.uevent =	usb_uevent,
+	.need_parent_lock =	true,
 };

@@ -14,6 +14,9 @@
 
 # This performs a series tests against the proc sysctl interface.
 
+# Kselftest framework requirement - SKIP code is 4.
+ksft_skip=4
+
 TEST_NAME="sysctl"
 TEST_DRIVER="test_${TEST_NAME}"
 TEST_DIR=$(dirname $0)
@@ -41,7 +44,7 @@ test_modprobe()
                echo "$0: $DIR not present" >&2
                echo "You must have the following enabled in your kernel:" >&2
                cat $TEST_DIR/config >&2
-               exit 1
+               exit $ksft_skip
        fi
 }
 
@@ -98,28 +101,30 @@ test_reqs()
 	uid=$(id -u)
 	if [ $uid -ne 0 ]; then
 		echo $msg must be run as root >&2
-		exit 0
+		exit $ksft_skip
 	fi
 
 	if ! which perl 2> /dev/null > /dev/null; then
 		echo "$0: You need perl installed"
-		exit 1
+		exit $ksft_skip
 	fi
 	if ! which getconf 2> /dev/null > /dev/null; then
 		echo "$0: You need getconf installed"
-		exit 1
+		exit $ksft_skip
 	fi
 	if ! which diff 2> /dev/null > /dev/null; then
 		echo "$0: You need diff installed"
-		exit 1
+		exit $ksft_skip
 	fi
 }
 
 function load_req_mod()
 {
-	trap "test_modprobe" EXIT
-
 	if [ ! -d $DIR ]; then
+		if ! modprobe -q -n $TEST_DRIVER; then
+			echo "$0: module $TEST_DRIVER not found [SKIP]"
+			exit $ksft_skip
+		fi
 		modprobe $TEST_DRIVER
 		if [ $? -ne 0 ]; then
 			exit
@@ -283,6 +288,58 @@ run_numerictests()
 		echo "ok"
 	fi
 	test_rc
+}
+
+check_failure()
+{
+	echo -n "Testing that $1 fails as expected..."
+	reset_vals
+	TEST_STR="$1"
+	orig="$(cat $TARGET)"
+	echo -n "$TEST_STR" > $TARGET 2> /dev/null
+
+	# write should fail and $TARGET should retain its original value
+	if [ $? = 0 ] || [ "$(cat $TARGET)" != "$orig" ]; then
+		echo "FAIL" >&2
+		rc=1
+	else
+		echo "ok"
+	fi
+	test_rc
+}
+
+run_wideint_tests()
+{
+	# sysctl conversion functions receive a boolean sign and ulong
+	# magnitude; here we list the magnitudes we want to test (each of
+	# which will be tested in both positive and negative forms).  Since
+	# none of these values fit in 32 bits, writing them to an int- or
+	# uint-typed sysctl should fail.
+	local magnitudes=(
+		# common boundary-condition values (zero, +1, -1, INT_MIN,
+		# and INT_MAX respectively) if truncated to lower 32 bits
+		# (potential for being falsely deemed in range)
+		0x0000000100000000
+		0x0000000100000001
+		0x00000001ffffffff
+		0x0000000180000000
+		0x000000017fffffff
+
+		# these look like negatives, but without a leading '-' are
+		# actually large positives (should be rejected as above
+		# despite being zero/+1/-1/INT_MIN/INT_MAX in the lower 32)
+		0xffffffff00000000
+		0xffffffff00000001
+		0xffffffffffffffff
+		0xffffffff80000000
+		0xffffffff7fffffff
+	)
+
+	for sign in '' '-'; do
+		for mag in "${magnitudes[@]}"; do
+			check_failure "${sign}${mag}"
+		done
+	done
 }
 
 # Your test must accept digits 3 and 4 to use this
@@ -551,6 +608,7 @@ sysctl_test_0001()
 	TEST_STR=$(( $ORIG + 1 ))
 
 	run_numerictests
+	run_wideint_tests
 	run_limit_digit
 }
 
@@ -575,6 +633,7 @@ sysctl_test_0003()
 	TEST_STR=$(( $ORIG + 1 ))
 
 	run_numerictests
+	run_wideint_tests
 	run_limit_digit
 	run_limit_digit_int
 }
@@ -587,6 +646,7 @@ sysctl_test_0004()
 	TEST_STR=$(( $ORIG + 1 ))
 
 	run_numerictests
+	run_wideint_tests
 	run_limit_digit
 	run_limit_digit_uint
 }
@@ -765,6 +825,7 @@ function parse_args()
 test_reqs
 allow_user_defaults
 check_production_sysctl_writes_strict
+test_modprobe
 load_req_mod
 
 trap "test_finish" EXIT
