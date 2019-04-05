@@ -101,9 +101,16 @@ struct tcp_options_received {
 		smc_ok : 1,	/* SMC seen on SYN packet		*/
 		snd_wscale : 4,	/* Window scaling received from sender	*/
 		rcv_wscale : 4;	/* Window scaling to send to receiver	*/
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	u8	migrate_ok : 1; /* Migrate seen on SYN packet		*/
+#endif
 	u8	num_sacks;	/* Number of SACK blocks		*/
 	u16	user_mss;	/* mss requested by user in ioctl	*/
 	u16	mss_clamp;	/* Maximal mss, negotiated at connection setup */
+
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	u32	migrate_token;	/* TCP migration token */
+#endif
 };
 
 static inline void tcp_clear_options(struct tcp_options_received *rx_opt)
@@ -404,7 +411,7 @@ struct tcp_sock {
 	u32	*saved_syn;
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
 /* TCP Migration related information */
-	u32	mig_token;
+	u32	migrate_token;
 	struct proc_dir_entry *pr;
 #endif
 

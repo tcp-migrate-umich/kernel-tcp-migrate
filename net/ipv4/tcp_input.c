@@ -3817,6 +3817,14 @@ void tcp_parse_options(const struct net *net,
 					opt_rx->snd_wscale = snd_wscale;
 				}
 				break;
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+			case TCPOPT_MIGRATE:
+				if (opsize == TCPOLEN_MIGRATE && th->syn) {
+					opt_rx->migrate_ok = 1;
+					opt_rx->migrate_token = get_unaligned_be32(ptr);
+				}
+				break;
+#endif
 			case TCPOPT_TIMESTAMP:
 				if ((opsize == TCPOLEN_TIMESTAMP) &&
 				    ((estab && opt_rx->tstamp_ok) ||
@@ -6314,6 +6322,10 @@ static void tcp_openreq_init(struct request_sock *req,
 #if IS_ENABLED(CONFIG_SMC)
 	ireq->smc_ok = rx_opt->smc_ok;
 #endif
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	ireq->migrate_ok = rx_opt->migrate_ok;
+	ireq->migrate_token = rx_opt->migrate_token;
+#endif
 }
 
 struct request_sock *inet_reqsk_alloc(const struct request_sock_ops *ops,
@@ -6455,6 +6467,16 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 	dst = af_ops->route_req(sk, &fl, req);
 	if (!dst)
 		goto drop_and_free;
+
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	/* Upon receiving a SYN with migrate permitted,
+	 * update our tcp sock's migrate token to match
+	 * the one in the SYN.
+	 */
+	if (tmp_opt.migrate_ok) {
+		tp->migrate_token = tmp_opt.migrate_token;
+	}
+#endif
 
 	if (!want_cookie && !isn) {
 		/* Kill the following clause, if you dislike this way. */

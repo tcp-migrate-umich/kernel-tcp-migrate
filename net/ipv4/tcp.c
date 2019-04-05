@@ -453,7 +453,7 @@ void tcp_init_sock(struct sock *sk)
 	sk->sk_rcvbuf = sock_net(sk)->ipv4.sysctl_tcp_rmem[1];
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
-	tp->mig_token = 0;
+	tp->migrate_token = 0;
         // JOSEPH
         // tp->pr =  proc_net_mkdir
         // tp->start = create_proc_entry // write only & flush
@@ -2935,7 +2935,7 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 		if (!tp->repair)
 			err = -EINVAL;
 		else
-			tp->mig_token = val;
+			tp->migrate_token = val;
 		break;
 #endif
 
@@ -3560,7 +3560,7 @@ static int do_tcp_getsockopt(struct sock *sk, int level,
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
 	case TCP_MIGRATE_TOKEN:
 		if (tp->repair)
-			val = tp->mig_token;
+			val = tp->migrate_token;
 		else
 			return -EINVAL;
 		break;

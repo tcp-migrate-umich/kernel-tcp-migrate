@@ -190,6 +190,10 @@ void tcp_time_wait(struct sock *sk, int state, int timeo);
  */
 #define TCPOPT_FASTOPEN_MAGIC	0xF989
 #define TCPOPT_SMC_MAGIC	0xE2D4C3D9
+/* TCP migration options (in reserved option space for now) */
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+#define TCPOPT_MIGRATE		31
+#endif
 
 /*
  *     TCP option lengths
@@ -203,6 +207,9 @@ void tcp_time_wait(struct sock *sk, int state, int timeo);
 #define TCPOLEN_FASTOPEN_BASE  2
 #define TCPOLEN_EXP_FASTOPEN_BASE  4
 #define TCPOLEN_EXP_SMC_BASE   6
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+#define TCPOLEN_MIGRATE        6
+#endif
 
 /* But this is what stacks really send out. */
 #define TCPOLEN_TSTAMP_ALIGNED		12
@@ -214,6 +221,9 @@ void tcp_time_wait(struct sock *sk, int state, int timeo);
 #define TCPOLEN_MD5SIG_ALIGNED		20
 #define TCPOLEN_MSS_ALIGNED		4
 #define TCPOLEN_EXP_SMC_BASE_ALIGNED	8
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+#define TCPOLEN_MIGRATE_ALIGNED         8
+#endif
 
 /* Flags in tp->nonagle */
 #define TCP_NAGLE_OFF		1	/* Nagle's algo is disabled */

@@ -412,6 +412,9 @@ static inline bool tcp_urg_mode(const struct tcp_sock *tp)
 #define OPTION_TS		(1 << 1)
 #define OPTION_MD5		(1 << 2)
 #define OPTION_WSCALE		(1 << 3)
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+#define OPTION_MIGRATE		(1 << 4)
+#endif
 #define OPTION_FAST_OPEN_COOKIE	(1 << 8)
 #define OPTION_SMC		(1 << 9)
 
@@ -439,6 +442,10 @@ struct tcp_out_options {
 	__u8 *hash_location;	/* temporary pointer, overloaded */
 	__u32 tsval, tsecr;	/* need to include OPTION_TS */
 	struct tcp_fastopen_cookie *fastopen_cookie;	/* Fast open cookie */
+
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	u32 migrate_token;	/* TCP migration token */
+#endif
 };
 
 /* Write previously computed TCP options to the packet.
@@ -503,6 +510,16 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 			       (TCPOLEN_WINDOW << 8) |
 			       opts->ws);
 	}
+
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	if (unlikely(OPTION_MIGRATE & options)) {
+		*ptr++ = htonl((TCPOPT_NOP     << 24) |
+			       (TCPOPT_NOP     << 16) |
+			       (TCPOPT_MIGRATE <<  8) |
+			       TCPOLEN_MIGRATE);
+		*ptr++ = htonl(opts->migrate_token);
+	}
+#endif
 
 	if (unlikely(opts->num_sack_blocks)) {
 		struct tcp_sack_block *sp = tp->rx_opt.dsack ?
@@ -630,6 +647,12 @@ static unsigned int tcp_syn_options(struct sock *sk, struct sk_buff *skb,
 		opts->options |= OPTION_WSCALE;
 		remaining -= TCPOLEN_WSCALE_ALIGNED;
 	}
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	// Send migrate permitted option on every SYN
+	opts->options |= OPTION_MIGRATE;
+	opts->migrate_token = tp->migrate_token;
+	remaining -= TCPOLEN_MIGRATE_ALIGNED;
+#endif
 	if (likely(sock_net(sk)->ipv4.sysctl_tcp_sack)) {
 		opts->options |= OPTION_SACK_ADVERTISE;
 		if (unlikely(!(OPTION_TS & opts->options)))
@@ -690,6 +713,13 @@ static unsigned int tcp_synack_options(const struct sock *sk,
 		opts->options |= OPTION_WSCALE;
 		remaining -= TCPOLEN_WSCALE_ALIGNED;
 	}
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	if (likely(ireq->migrate_ok)) {
+		opts->options |= OPTION_MIGRATE;
+		opts->migrate_token = ireq->migrate_token;
+		remaining -= TCPOLEN_MIGRATE_ALIGNED;
+	}
+#endif
 	if (likely(ireq->tstamp_ok)) {
 		opts->options |= OPTION_TS;
 		opts->tsval = tcp_skb_timestamp(skb) + tcp_rsk(req)->ts_off;
