@@ -91,14 +91,15 @@ struct inet_request_sock {
 				ecn_ok	   : 1,
 				acked	   : 1,
 				no_srccheck: 1,
-#if IS_ENABLED(CONFIG_TCP_MIGRATE)
-				migrate_ok : 1,
-#endif
+				/* // JOSEPH-TODO: remove this! */
+/* #if IS_ENABLED(CONFIG_TCP_MIGRATE) */
+				/* migrate_ok : 1, */
+/* #endif */
 				smc_ok	   : 1;
 	u32                     ir_mark;
-#if IS_ENABLED(CONFIG_TCP_MIGRATE)
-	u32			migrate_token;
-#endif
+/* #if IS_ENABLED(CONFIG_TCP_MIGRATE) */
+/* 	u32			migrate_token; */
+/* #endif */
 	union {
 		struct ip_options_rcu __rcu	*ireq_opt;
 #if IS_ENABLED(CONFIG_IPV6)

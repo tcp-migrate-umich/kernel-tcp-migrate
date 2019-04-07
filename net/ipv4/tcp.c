@@ -453,11 +453,8 @@ void tcp_init_sock(struct sock *sk)
 	sk->sk_rcvbuf = sock_net(sk)->ipv4.sysctl_tcp_rmem[1];
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	tp->migrate_enabled = false;
 	tp->migrate_token = 0;
-        // JOSEPH
-        // tp->pr =  proc_net_mkdir
-        // tp->start = create_proc_entry // write only & flush
-        // tp->synack = create_proc_entry // read only
 #endif
 
 	sk_sockets_allocated_inc(sk);
@@ -2931,6 +2928,16 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 		break;
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	case TCP_MIGRATE_ENABLED:
+		if (val) 
+			tp->migrate_enabled = true;
+		else
+			tp->migrate_enabled = false;
+		/* beta version w/ token passing */
+		if (val) 
+			tp->migrate_token = (uint32_t) val;
+		break;
+
 	case TCP_MIGRATE_TOKEN:
 		if (!tp->repair)
 			err = -EINVAL;
@@ -3558,6 +3565,13 @@ static int do_tcp_getsockopt(struct sock *sk, int level,
 		break;
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	case TCP_MIGRATE_ENABLED:
+		if (tp->migrate_enabled)
+			val = 1;
+		else
+			val = 0;
+		break;
+
 	case TCP_MIGRATE_TOKEN:
 		if (tp->repair)
 			val = tp->migrate_token;

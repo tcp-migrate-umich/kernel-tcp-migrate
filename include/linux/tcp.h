@@ -101,14 +101,12 @@ struct tcp_options_received {
 		smc_ok : 1,	/* SMC seen on SYN packet		*/
 		snd_wscale : 4,	/* Window scaling received from sender	*/
 		rcv_wscale : 4;	/* Window scaling to send to receiver	*/
-#if IS_ENABLED(CONFIG_TCP_MIGRATE)
-	u8	migrate_ok : 1; /* Migrate seen on SYN packet		*/
-#endif
 	u8	num_sacks;	/* Number of SACK blocks		*/
 	u16	user_mss;	/* mss requested by user in ioctl	*/
 	u16	mss_clamp;	/* Maximal mss, negotiated at connection setup */
-
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	u8	migrate_enabled  : 1, /* Migrate seen on SYN packet		*/
+			migrate_rsv : 7;
 	u32	migrate_token;	/* TCP migration token */
 #endif
 };
@@ -152,7 +150,6 @@ static inline struct tcp_request_sock *tcp_rsk(const struct request_sock *req)
 }
 
 struct tcp_sock {
-  //JOSEPH
 	/* inet_connection_sock has to be the first member of tcp_sock */
 	struct inet_connection_sock	inet_conn;
 	u16	tcp_header_len;	/* Bytes of tcp header to send		*/
@@ -411,10 +408,10 @@ struct tcp_sock {
 	u32	*saved_syn;
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
 /* TCP Migration related information */
+	bool migrate_enabled;
 	u32	migrate_token;
 	struct proc_dir_entry *pr;
 #endif
-
 };
 
 enum tsq_enum {

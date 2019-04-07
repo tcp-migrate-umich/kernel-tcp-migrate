@@ -648,10 +648,13 @@ static unsigned int tcp_syn_options(struct sock *sk, struct sk_buff *skb,
 		remaining -= TCPOLEN_WSCALE_ALIGNED;
 	}
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
-	// Send migrate permitted option on every SYN
-	opts->options |= OPTION_MIGRATE;
-	opts->migrate_token = tp->migrate_token;
-	remaining -= TCPOLEN_MIGRATE_ALIGNED;
+	/* if enabled, set option flag & secure a room in header */
+	if (tp->migrate_enabled) { 
+		/* send migrate permitted option on every SYN */
+		opts->options |= OPTION_MIGRATE;
+		opts->migrate_token = tp->migrate_token;
+		remaining -= TCPOLEN_MIGRATE_ALIGNED;
+	}
 #endif
 	if (likely(sock_net(sk)->ipv4.sysctl_tcp_sack)) {
 		opts->options |= OPTION_SACK_ADVERTISE;
@@ -714,9 +717,9 @@ static unsigned int tcp_synack_options(const struct sock *sk,
 		remaining -= TCPOLEN_WSCALE_ALIGNED;
 	}
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
-	if (likely(ireq->migrate_ok)) {
+	if (tcp_sk(sk)->migrate_enabled) {
 		opts->options |= OPTION_MIGRATE;
-		opts->migrate_token = ireq->migrate_token;
+		opts->migrate_token = tcp_sk(sk)->migrate_token;
 		remaining -= TCPOLEN_MIGRATE_ALIGNED;
 	}
 #endif
@@ -3368,6 +3371,12 @@ static void tcp_connect_init(struct sock *sk)
 	if (tp->af_specific->md5_lookup(sk, sk))
 		tp->tcp_header_len += TCPOLEN_MD5SIG_ALIGNED;
 #endif
+
+/* #if IS_ENABLED(CONFIG_TCP_MIGRATE) */
+/* 	/1* secure a room for migrate token in tcp header *1/ */
+/* 	if (tp->migrate_enabled) */ 
+/* 		tp->tcp_header_len += TCPOLEN_MIGRATE_ALIGNED; */
+/* #endif */
 
 	/* If user gave his TCP_MAXSEG, record it to clamp */
 	if (tp->rx_opt.user_mss)

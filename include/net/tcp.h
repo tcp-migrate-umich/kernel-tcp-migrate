@@ -192,7 +192,7 @@ void tcp_time_wait(struct sock *sk, int state, int timeo);
 #define TCPOPT_SMC_MAGIC	0xE2D4C3D9
 /* TCP migration options (in reserved option space for now) */
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
-#define TCPOPT_MIGRATE		31
+#define TCPOPT_MIGRATE		40
 #endif
 
 /*
@@ -222,7 +222,7 @@ void tcp_time_wait(struct sock *sk, int state, int timeo);
 #define TCPOLEN_MSS_ALIGNED		4
 #define TCPOLEN_EXP_SMC_BASE_ALIGNED	8
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
-#define TCPOLEN_MIGRATE_ALIGNED         8
+#define TCPOLEN_MIGRATE_ALIGNED   8 /* option + len + 32 bit = 8 */
 #endif
 
 /* Flags in tp->nonagle */
