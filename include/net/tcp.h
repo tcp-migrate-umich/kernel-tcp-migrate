@@ -222,7 +222,7 @@ void tcp_time_wait(struct sock *sk, int state, int timeo);
 #define TCPOLEN_MSS_ALIGNED		4
 #define TCPOLEN_EXP_SMC_BASE_ALIGNED	8
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
-#define TCPOLEN_MIGRATE_ALIGNED   8 /* option + len + 32 bit = 8 */
+#define TCPOLEN_MIGRATE_ALIGNED		8 /* NOP + NOP + option + len + 32 bit = 8 */
 #endif
 
 /* Flags in tp->nonagle */

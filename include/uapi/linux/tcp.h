@@ -125,8 +125,8 @@ enum {
 #define TCP_ZEROCOPY_RECEIVE	35
 #define TCP_INQ			36	/* Notify bytes available to read as a cmsg on read */
 
-#define TCP_MIGRATE_ENABLED 40 /* to selectively enable tcp migrate */
-#define TCP_MIGRATE_TOKEN		41 /* Get/set TCP migration token */
+#define TCP_MIGRATE_ENABLED	40 	/* to selectively enable tcp migrate */
+#define TCP_MIGRATE_TOKEN	41 	/* Get/set TCP migration token */
 
 #define TCP_CM_INQ		TCP_INQ
 
