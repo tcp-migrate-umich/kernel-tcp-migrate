@@ -3372,12 +3372,6 @@ static void tcp_connect_init(struct sock *sk)
 		tp->tcp_header_len += TCPOLEN_MD5SIG_ALIGNED;
 #endif
 
-/* #if IS_ENABLED(CONFIG_TCP_MIGRATE) */
-/* 	/1* secure a room for migrate token in tcp header *1/ */
-/* 	if (tp->migrate_enabled) */ 
-/* 		tp->tcp_header_len += TCPOLEN_MIGRATE_ALIGNED; */
-/* #endif */
-
 	/* If user gave his TCP_MAXSEG, record it to clamp */
 	if (tp->rx_opt.user_mss)
 		tp->rx_opt.mss_clamp = tp->rx_opt.user_mss;

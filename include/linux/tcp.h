@@ -105,8 +105,8 @@ struct tcp_options_received {
 	u16	user_mss;	/* mss requested by user in ioctl	*/
 	u16	mss_clamp;	/* Maximal mss, negotiated at connection setup */
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
-	u8	migrate_enabled  : 1, /* Migrate seen on SYN packet		*/
-			migrate_rsv : 7;
+	u8	migrate_enabled	: 1, /* Migrate seen on SYN packet		*/
+		migrate_rsv 	: 7;
 	u32	migrate_token;	/* TCP migration token */
 #endif
 };
@@ -406,11 +406,12 @@ struct tcp_sock {
 	 */
 	struct request_sock *fastopen_rsk;
 	u32	*saved_syn;
+
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
 /* TCP Migration related information */
-	bool migrate_enabled;
-	u32	migrate_token;
 	struct proc_dir_entry *pr;
+	bool 	migrate_enabled;
+	u32	migrate_token;
 #endif
 };
 
