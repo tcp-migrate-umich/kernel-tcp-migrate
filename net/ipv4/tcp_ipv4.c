@@ -2393,6 +2393,10 @@ static void get_tcp4_sock(struct sock *sk, struct seq_file *f, int i)
 	__u16 srcp = ntohs(inet->inet_sport);
 	int rx_queue;
 	int state;
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	bool migrate_enabled = tp->migrate_enabled;
+	u32 migrate_token;
+#endif
 
 	if (icsk->icsk_pending == ICSK_TIME_RETRANS ||
 	    icsk->icsk_pending == ICSK_TIME_REO_TIMEOUT ||
@@ -2419,8 +2423,21 @@ static void get_tcp4_sock(struct sock *sk, struct seq_file *f, int i)
 		 */
 		rx_queue = max_t(int, tp->rcv_nxt - tp->copied_seq, 0);
 
+
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	if (migrate_enabled)
+		migrate_token = tp->migrate_token;
+	else
+		migrate_token = 0;
+#endif
+
+
 	seq_printf(f, "%4d: %08X:%04X %08X:%04X %02X %08X:%08X %02X:%08lX "
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+			"%08X %5u %8d %lu %d %pK %lu %lu %u %u %d %d",
+#else
 			"%08X %5u %8d %lu %d %pK %lu %lu %u %u %d",
+#endif
 		i, src, srcp, dest, destp, state,
 		tp->write_seq - tp->snd_una,
 		rx_queue,
@@ -2437,7 +2454,11 @@ static void get_tcp4_sock(struct sock *sk, struct seq_file *f, int i)
 		tp->snd_cwnd,
 		state == TCP_LISTEN ?
 		    fastopenq->max_qlen :
-		    (tcp_in_initial_slowstart(tp) ? -1 : tp->snd_ssthresh));
+		    (tcp_in_initial_slowstart(tp) ? -1 : tp->snd_ssthresh)
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+		, migrate_token
+#endif
+				);
 }
 
 static void get_timewait4_sock(const struct inet_timewait_sock *tw,

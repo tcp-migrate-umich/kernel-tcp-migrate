@@ -2934,8 +2934,11 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 		else
 			tp->migrate_enabled = false;
 		/* beta version w/ token passing */
-		if (val) 
+		if (val) {
 			tp->migrate_token = (uint32_t) val;
+			printk(KERN_INFO "[%s] setting token to %u\n", __func__,
+					tp->migrate_token);
+		}
 		break;
 
 	case TCP_MIGRATE_TOKEN:
