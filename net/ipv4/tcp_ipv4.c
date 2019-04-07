@@ -2514,6 +2514,63 @@ static const struct seq_operations tcp4_seq_ops = {
 	.stop		= tcp_seq_stop,
 };
 
+
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+static void get_tcp_mig_sock(struct sock *sk, struct seq_file *f, int i)
+{
+	const struct tcp_sock *tp = tcp_sk(sk);
+	const struct inet_sock *inet = inet_sk(sk);
+	__be32 dest = inet->inet_daddr;
+	__be32 src = inet->inet_rcv_saddr;
+	__u16 destp = ntohs(inet->inet_dport);
+	__u16 srcp = ntohs(inet->inet_sport);
+	int state;
+	bool migrate_enabled = tp->migrate_enabled;
+	u32 migrate_token;
+
+	if (!migrate_enabled)
+		goto skip;
+
+	state = inet_sk_state_load(sk);
+	migrate_token = tp->migrate_token;
+
+	seq_printf(f, "%4d: %08X:%04X %08X:%04X %02X %d\n",
+		i, src, srcp, dest, destp, state, migrate_token
+		);
+
+	/* TODO: given tcp_mig socket, now put the socket into MIG_SYN state
+	 */
+skip:
+	return;
+}
+static int tcp_mig_seq_show(struct seq_file *seq, void *v)
+{
+	struct tcp_iter_state *st;
+	struct sock *sk = v;
+
+	seq_setwidth(seq, TMPSZ - 1);
+	if (v == SEQ_START_TOKEN) {
+		seq_puts(seq, "  sl  local_address rem_address			token");
+		goto out;
+	}
+	st = seq->private;
+
+	if (sk->sk_state != TCP_TIME_WAIT && sk->sk_state != TCP_NEW_SYN_RECV)
+		get_tcp_mig_sock(v, seq, st->num);
+
+out:
+	return 0;
+}
+
+
+static const struct seq_operations tcp_mig_seq_ops = {
+	.show		= tcp_mig_seq_show,
+	.start		= tcp_seq_start,
+	.next		= tcp_seq_next,
+	.stop		= tcp_seq_stop,
+};
+#endif
+
 static struct tcp_seq_afinfo tcp4_seq_afinfo = {
 	.family		= AF_INET,
 };
@@ -2523,12 +2580,20 @@ static int __net_init tcp4_proc_init_net(struct net *net)
 	if (!proc_create_net_data("tcp", 0444, net->proc_net, &tcp4_seq_ops,
 			sizeof(struct tcp_iter_state), &tcp4_seq_afinfo))
 		return -ENOMEM;
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	if (!proc_create_net_data("tcp_mig_syn", 0444, net->proc_net, &tcp_mig_seq_ops,
+			sizeof(struct tcp_iter_state), &tcp4_seq_afinfo))
+		return -ENOMEM;
+#endif
 	return 0;
 }
 
 static void __net_exit tcp4_proc_exit_net(struct net *net)
 {
 	remove_proc_entry("tcp", net->proc_net);
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	remove_proc_entry("tcp_mig_syn", net->proc_net);
+#endif
 }
 
 static struct pernet_operations tcp4_net_ops = {

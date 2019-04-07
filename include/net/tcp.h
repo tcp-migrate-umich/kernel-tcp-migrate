@@ -1606,6 +1606,17 @@ int tcp_md5_hash_skb_data(struct tcp_md5sig_pool *, const struct sk_buff *,
 int tcp_md5_hash_key(struct tcp_md5sig_pool *hp,
 		     const struct tcp_md5sig_key *key);
 
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+extern int migrate_syn;
+extern int migrate_syn_ack;
+
+/* #ifdef CONFIG_PROC_FS */
+/* void tcp_migrate_proc_init(void); */
+/* void tcp_migrate_proc_exit(void); */
+/* #endif */
+#endif
+
+
 /* From tcp_fastopen.c */
 void tcp_fastopen_cache_get(struct sock *sk, u16 *mss,
 			    struct tcp_fastopen_cookie *cookie);
