@@ -1477,6 +1477,20 @@ struct sock *tcp_v4_syn_recv_sock(const struct sock *sk, struct sk_buff *skb,
 	}
 #endif
 
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+  if (tcp_rsk(req)->migrate_enabled) {
+    /* copy mig info to child socket (returned via accept) 
+     * currently, assuming that no incoming connection for time
+     * between SYN-ACK by server and ACK by client.
+     * */
+    newtp->migrate_enabled = tcp_rsk(req)->migrate_enabled;
+    newtp->migrate_token = tcp_rsk(req)->migrate_token;
+  } else {
+    newtp->migrate_enabled = false;
+    newtp->migrate_token = 0;
+  }
+#endif
+
 	if (__inet_inherit_port(sk, newsk) < 0)
 		goto put_and_exit;
 	*own_req = inet_ehash_nolisten(newsk, req_to_sk(req_unhash));
@@ -2534,9 +2548,10 @@ static void get_tcp_mig_sock(struct sock *sk, struct seq_file *f, int i)
 	state = inet_sk_state_load(sk);
 	migrate_token = tp->migrate_token;
 
-	seq_printf(f, "%4d: %08X:%04X %08X:%04X %02X %d\n",
+	seq_printf(f, "%4d: %08X:%04X %08X:%04X %02X %d",
 		i, src, srcp, dest, destp, state, migrate_token
 		);
+	seq_pad(f, '\n');
 
 	/* TODO: given tcp_mig socket, now put the socket into MIG_SYN state
 	 */
@@ -2550,7 +2565,7 @@ static int tcp_mig_seq_show(struct seq_file *seq, void *v)
 
 	seq_setwidth(seq, TMPSZ - 1);
 	if (v == SEQ_START_TOKEN) {
-		seq_puts(seq, "  sl  local_address rem_address			token");
+		seq_puts(seq, "  sl  local_address rem_address			token\n");
 		goto out;
 	}
 	st = seq->private;

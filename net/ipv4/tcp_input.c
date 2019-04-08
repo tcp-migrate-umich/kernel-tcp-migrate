@@ -6473,6 +6473,8 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 	if (tmp_opt.migrate_enabled) {
 		tp->migrate_token = tmp_opt.migrate_token;
 		printk(KERN_INFO "[%s] token %u\n", __func__, tp->migrate_token);
+    tcp_rsk(req)->migrate_enabled = true;
+    tcp_rsk(req)->migrate_token = tmp_opt.migrate_token;
 	}
 #endif
 
@@ -6514,6 +6516,10 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 		tcp_reqsk_record_syn(sk, req, skb);
 		fastopen_sk = tcp_try_fastopen(sk, skb, req, &foc, dst);
 	}
+
+  /* JOSEPH: skipped for putting token in tcp mig for now (will be
+   * done in tcp_v4_sync_recv_sock when ACK for SYNACK is received */
+
 	if (fastopen_sk) {
 		af_ops->send_synack(fastopen_sk, dst, &fl, req,
 				    &foc, TCP_SYNACK_FASTOPEN);

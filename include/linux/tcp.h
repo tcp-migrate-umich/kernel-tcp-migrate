@@ -118,6 +118,10 @@ static inline void tcp_clear_options(struct tcp_options_received *rx_opt)
 #if IS_ENABLED(CONFIG_SMC)
 	rx_opt->smc_ok = 0;
 #endif
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+  rx_opt->migrate_enabled = 0;
+  rx_opt->migrate_token = 0;
+#endif
 }
 
 /* This is the max number of SACKS that we'll generate and process. It's safe
@@ -142,6 +146,10 @@ struct tcp_request_sock {
 						  * FastOpen it's the seq#
 						  * after data-in-SYN.
 						  */
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+  bool      migrate_enabled;
+  u32       migrate_token;
+#endif
 };
 
 static inline struct tcp_request_sock *tcp_rsk(const struct request_sock *req)
