@@ -444,7 +444,9 @@ struct tcp_out_options {
 	struct tcp_fastopen_cookie *fastopen_cookie;	/* Fast open cookie */
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
-	u32 migrate_token;	/* TCP migration token */
+	u8 	migrate_perm : 1, /* If OPTION_MIGRATE,    */
+		migrate_req  : 1; /* which migrate option? */
+	u32	migrate_token;	/* TCP migration token */
 #endif
 };
 
@@ -513,11 +515,22 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
 	if (unlikely(OPTION_MIGRATE & options)) {
-		*ptr++ = htonl((TCPOPT_NOP     << 24) |
-			       (TCPOPT_NOP     << 16) |
-			       (TCPOPT_MIGRATE <<  8) |
-			       TCPOLEN_MIGRATE);
-		*ptr++ = htonl(opts->migrate_token);
+		/* Migrate-permitted option, sent in initial SYN */
+		if (opts->migrate_perm) {
+			*ptr++ = htonl((TCPOPT_NOP << 24) |
+				       (TCPOPT_NOP << 16) |
+				       (TCPOPT_MIGRATE_PERM << 8) |
+				       TCPOLEN_MIGRATE_PERM);
+			*ptr++ = htonl(opts->migrate_token);
+		}
+		/* Migrate request option, sent by migrated endpoint */
+		else if (opts->migrate_req) {
+			*ptr++ = htonl((TCPOPT_NOP << 24) |
+				       (TCPOPT_NOP << 16) |
+				       (TCPOPT_MIGRATE_REQ << 8) |
+				       TCPOLEN_MIGRATE_REQ);
+			*ptr++ = htonl(opts->migrate_token);
+		}
 	}
 #endif
 
@@ -648,12 +661,27 @@ static unsigned int tcp_syn_options(struct sock *sk, struct sk_buff *skb,
 		remaining -= TCPOLEN_WSCALE_ALIGNED;
 	}
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
-	/* if enabled, set option flag & secure a room in header */
+	/* if migration is enabled, we will want to send either
+	 * a migrate-permitted option or migrate-request option
+	 * in our SYN */
 	if (tp->migrate_enabled) { 
-		/* send migrate permitted option on every SYN */
 		opts->options |= OPTION_MIGRATE;
 		opts->migrate_token = tp->migrate_token;
-		remaining -= TCPOLEN_MIGRATE_ALIGNED;
+
+		/* If socket is in repair mode, and it is
+		 * migrate_enabled, and we are sending a SYN,
+		 * then we must be requesting the client to
+		 * migrate their end of the connection.
+		 * Otherwise, it is just a regular initial
+		 * SYN packet, so we send migrate-permitted.
+		 */
+		if (unlikely(tp->repair)) {
+			opts->migrate_req = 1;
+			remaining -= TCPOLEN_MIGRATE_REQ_ALIGNED;
+		} else {
+			opts->migrate_perm = 1;
+			remaining -= TCPOLEN_MIGRATE_PERM_ALIGNED;
+		}
 	}
 #endif
 	if (likely(sock_net(sk)->ipv4.sysctl_tcp_sack)) {
@@ -717,10 +745,14 @@ static unsigned int tcp_synack_options(const struct sock *sk,
 		remaining -= TCPOLEN_WSCALE_ALIGNED;
 	}
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	/* If replying to a SYN with migrate-permitted option,
+	 * acknowledge that our end also supports migration.
+	 */
 	if (tcp_sk(sk)->migrate_enabled) {
 		opts->options |= OPTION_MIGRATE;
+		opts->migrate_perm = 1;
 		opts->migrate_token = tcp_sk(sk)->migrate_token;
-		remaining -= TCPOLEN_MIGRATE_ALIGNED;
+		remaining -= TCPOLEN_MIGRATE_PERM_ALIGNED;
 	}
 #endif
 	if (likely(ireq->tstamp_ok)) {

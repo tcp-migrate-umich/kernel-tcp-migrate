@@ -3818,10 +3818,18 @@ void tcp_parse_options(const struct net *net,
 				}
 				break;
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
-			case TCPOPT_MIGRATE:
-				if (opsize == TCPOLEN_MIGRATE && th->syn) {
-					printk(KERN_INFO "[%s] detected TCPOPT_MIGRATE!\n", __func__);
-					opt_rx->migrate_enabled = true;
+			case TCPOPT_MIGRATE_PERM:
+				if (opsize == TCPOLEN_MIGRATE_PERM && th->syn) {
+					printk(KERN_INFO "[%s] detected TCPOPT_MIGRATE_PERM!\n", __func__);
+					opt_rx->migrate_perm = 1;
+					opt_rx->migrate_token = get_unaligned_be32(ptr);
+				}
+				break;
+
+			case TCPOPT_MIGRATE_REQ:
+				if (opsize == TCPOLEN_MIGRATE_REQ && th->syn) {
+					printk(KERN_INFO "[%s] detected TCPOPT_MIGRATE_REQ!\n", __func__);
+					opt_rx->migrate_req = 1;
 					opt_rx->migrate_token = get_unaligned_be32(ptr);
 				}
 				break;
@@ -6470,7 +6478,8 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 	 * update our tcp sock's migrate token to match
 	 * the one in the SYN.
 	 */
-	if (tmp_opt.migrate_enabled) {
+	if (tmp_opt.migrate_perm) {
+		tp->migrate_enabled = true;
 		tp->migrate_token = tmp_opt.migrate_token;
 		printk(KERN_INFO "[%s] token %u\n", __func__, tp->migrate_token);
 	}
