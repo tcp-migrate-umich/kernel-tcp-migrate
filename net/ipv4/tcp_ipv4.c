@@ -1478,17 +1478,18 @@ struct sock *tcp_v4_syn_recv_sock(const struct sock *sk, struct sk_buff *skb,
 #endif
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
-  if (tcp_rsk(req)->migrate_enabled) {
-    /* copy mig info to child socket (returned via accept) 
-     * currently, assuming that no incoming connection for time
-     * between SYN-ACK by server and ACK by client.
-     * */
-    newtp->migrate_enabled = tcp_rsk(req)->migrate_enabled;
-    newtp->migrate_token = tcp_rsk(req)->migrate_token;
-  } else {
-    newtp->migrate_enabled = false;
-    newtp->migrate_token = 0;
-  }
+	if (tcp_rsk(req)->migrate_enabled) {
+		/* copy mig info to child socket (returned via accept) 
+		 * currently, assuming that no incoming connection for time
+		 * between SYN-ACK by server and ACK by client.
+		 */
+		printk("[%s] setting child token to %u\n", __func__, tcp_rsk(req)->migrate_token);
+		newtp->migrate_enabled = tcp_rsk(req)->migrate_enabled;
+		newtp->migrate_token = tcp_rsk(req)->migrate_token;
+	} else {
+		newtp->migrate_enabled = false;
+		newtp->migrate_token = 0;
+	}
 #endif
 
 	if (__inet_inherit_port(sk, newsk) < 0)

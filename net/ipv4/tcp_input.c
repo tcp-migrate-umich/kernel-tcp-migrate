@@ -6517,8 +6517,8 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 		fastopen_sk = tcp_try_fastopen(sk, skb, req, &foc, dst);
 	}
 
-  /* JOSEPH: skipped for putting token in tcp mig for now (will be
-   * done in tcp_v4_sync_recv_sock when ACK for SYNACK is received */
+	/* JOSEPH: skipped for putting token in tcp mig for now (will be
+	 * done in tcp_v4_sync_recv_sock when ACK for SYNACK is received */
 
 	if (fastopen_sk) {
 		af_ops->send_synack(fastopen_sk, dst, &fl, req,
