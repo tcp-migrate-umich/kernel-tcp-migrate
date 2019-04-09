@@ -6323,6 +6323,10 @@ static void tcp_openreq_init(struct request_sock *req,
 #if IS_ENABLED(CONFIG_SMC)
 	ireq->smc_ok = rx_opt->smc_ok;
 #endif
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	tcp_rsk(req)->migrate_enabled = 0;
+	tcp_rsk(req)->migrate_token = 0;
+#endif
 }
 
 struct request_sock *inet_reqsk_alloc(const struct request_sock_ops *ops,
