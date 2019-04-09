@@ -6331,6 +6331,10 @@ static void tcp_openreq_init(struct request_sock *req,
 #if IS_ENABLED(CONFIG_SMC)
 	ireq->smc_ok = rx_opt->smc_ok;
 #endif
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	tcp_rsk(req)->migrate_enabled = 0;
+	tcp_rsk(req)->migrate_token = 0;
+#endif
 }
 
 struct request_sock *inet_reqsk_alloc(const struct request_sock_ops *ops,
@@ -6482,6 +6486,8 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 		tp->migrate_enabled = true;
 		tp->migrate_token = tmp_opt.migrate_token;
 		printk(KERN_INFO "[%s] token %u\n", __func__, tp->migrate_token);
+    tcp_rsk(req)->migrate_enabled = true;
+    tcp_rsk(req)->migrate_token = tmp_opt.migrate_token;
 	}
 #endif
 
@@ -6523,6 +6529,10 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 		tcp_reqsk_record_syn(sk, req, skb);
 		fastopen_sk = tcp_try_fastopen(sk, skb, req, &foc, dst);
 	}
+
+	/* JOSEPH: skipped for putting token in tcp mig for now (will be
+	 * done in tcp_v4_sync_recv_sock when ACK for SYNACK is received */
+
 	if (fastopen_sk) {
 		af_ops->send_synack(fastopen_sk, dst, &fl, req,
 				    &foc, TCP_SYNACK_FASTOPEN);

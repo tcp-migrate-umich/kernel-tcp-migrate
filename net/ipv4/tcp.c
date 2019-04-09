@@ -303,6 +303,11 @@ EXPORT_SYMBOL(tcp_have_smc);
 struct percpu_counter tcp_sockets_allocated;
 EXPORT_SYMBOL(tcp_sockets_allocated);
 
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+int migrate_syn = 0; 
+int migrate_syn_ack = 0;
+#endif
+
 /*
  * TCP splice context
  */
@@ -4007,4 +4012,7 @@ void __init tcp_init(void)
 	tcp_metrics_init();
 	BUG_ON(tcp_register_congestion_control(&tcp_reno) != 0);
 	tcp_tasklet_init();
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	migrate_syn = migrate_syn_ack = 0;
+#endif
 }
