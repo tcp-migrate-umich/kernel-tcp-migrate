@@ -1584,10 +1584,10 @@ int tcp_v4_do_rcv(struct sock *sk, struct sk_buff *skb)
 	return 0;
 
 reset:
-	printk(KERN_INFO "[%p][%s] reset\n", (void*)sk, __func__);
+	//printk(KERN_INFO "[%p][%s] reset\n", (void*)sk, __func__);
 	tcp_v4_send_reset(rsk, skb);
 discard:
-	printk(KERN_INFO "[%p][%s] discard\n", (void*)sk, __func__);
+	//printk(KERN_INFO "[%p][%s] discard\n", (void*)sk, __func__);
 	kfree_skb(skb);
 	/* Be careful here. If this function gets more complicated and
 	 * gcc suffers from register pressure on the x86, sk (in %ebx)
@@ -1597,7 +1597,7 @@ discard:
 	return 0;
 
 csum_err:
-	printk(KERN_INFO "[%p][%s] csum_err\n", (void*)sk, __func__);
+	//printk(KERN_INFO "[%p][%s] csum_err\n", (void*)sk, __func__);
 	TCP_INC_STATS(sock_net(sk), TCP_MIB_CSUMERRORS);
 	TCP_INC_STATS(sock_net(sk), TCP_MIB_INERRS);
 	goto discard;
@@ -1935,14 +1935,14 @@ process:
 	bh_unlock_sock(sk);
 
 put_and_return:
-	//printk(KERN_INFO "[%p][%s] put_and_return\n", (void*)sk, __func__);
+	////printk(KERN_INFO "[%p][%s] put_and_return\n", (void*)sk, __func__);
 	if (refcounted)
 		sock_put(sk);
 
 	return ret;
 
 no_tcp_socket:
-	printk(KERN_INFO "[%s] no_tcp_socket\n", __func__);
+	//printk(KERN_INFO "[%s] no_tcp_socket\n", __func__);
 	/* Check to see if this is a migration request */
 	tcp_clear_options(&tmp_opt);
 	tcp_parse_options(net, skb, &tmp_opt, 1, NULL);
@@ -1963,23 +1963,23 @@ no_tcp_socket:
 
 	if (tcp_checksum_complete(skb)) {
 csum_error:
-		printk(KERN_INFO "[%p][%s] csum_error\n", (void*)sk, __func__);
+		//printk(KERN_INFO "[%p][%s] csum_error\n", (void*)sk, __func__);
 		__TCP_INC_STATS(net, TCP_MIB_CSUMERRORS);
 bad_packet:
-		printk(KERN_INFO "[%p][%s] bad_packet\n", (void*)sk, __func__);
+		//printk(KERN_INFO "[%p][%s] bad_packet\n", (void*)sk, __func__);
 		__TCP_INC_STATS(net, TCP_MIB_INERRS);
 	} else {
 		tcp_v4_send_reset(NULL, skb);
 	}
 
 discard_it:
-	printk(KERN_INFO "[%p][%s] discard_it\n", (void*)sk, __func__);
+	//printk(KERN_INFO "[%p][%s] discard_it\n", (void*)sk, __func__);
 	/* Discard frame. */
 	kfree_skb(skb);
 	return 0;
 
 discard_and_relse:
-	printk(KERN_INFO "[%p][%s] discard_and_relse\n", (void*)sk, __func__);
+	//printk(KERN_INFO "[%p][%s] discard_and_relse\n", (void*)sk, __func__);
 	sk_drops_add(sk, skb);
 	if (refcounted)
 		sock_put(sk);

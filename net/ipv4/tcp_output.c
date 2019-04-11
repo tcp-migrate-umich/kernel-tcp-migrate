@@ -3743,8 +3743,6 @@ void tcp_send_migrate_req(struct sock *sk)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 
-	printk(KERN_INFO "[%p][%s] sending migrate request\n", (void*)sk, __func__);
-
 	if (!tp->migrate_enabled) {
 		printk(KERN_INFO "[%p][%s] migration is not enabled in this socket?\n", (void*)sk, __func__);
 		return;
@@ -3754,6 +3752,8 @@ void tcp_send_migrate_req(struct sock *sk)
 		printk(KERN_INFO "[%p][%s] migrate_req_snd already set?\n", (void*)sk, __func__);
 		return;
 	}
+
+	printk(KERN_INFO "[%p][%s] sending migrate request\n", (void*)sk, __func__);
 
 	// Enable this so that tcp_established_options
 	// knows to add the MIGRATE_REQ option.

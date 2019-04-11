@@ -3725,7 +3725,7 @@ no_queue:
 	return 1;
 
 old_ack:
-	printk(KERN_INFO "[%p][%s] old ack\n", (void*)sk, __func__);
+	//printk(KERN_INFO "[%p][%s] old ack\n", (void*)sk, __func__);
 	/* If data was SACKed, tag it and see if we should send more data.
 	 * If data was DSACKed, see if we can undo a cwnd reduction.
 	 */
@@ -5482,7 +5482,7 @@ syn_challenge:
 	return true;
 
 discard:
-	printk(KERN_INFO "[%p][%s] discard\n", (void*)sk, __func__);
+	//printk(KERN_INFO "[%p][%s] discard\n", (void*)sk, __func__);
 	tcp_drop(sk, skb);
 	return false;
 }
@@ -5686,12 +5686,12 @@ step5:
 	return;
 
 csum_error:
-	printk(KERN_INFO "[%p][%s] csum_error\n", (void*)sk, __func__);
+	//printk(KERN_INFO "[%p][%s] csum_error\n", (void*)sk, __func__);
 	TCP_INC_STATS(sock_net(sk), TCP_MIB_CSUMERRORS);
 	TCP_INC_STATS(sock_net(sk), TCP_MIB_INERRS);
 
 discard:
-	printk(KERN_INFO "[%p][%s] discard\n", (void*)sk, __func__);
+	//printk(KERN_INFO "[%p][%s] discard\n", (void*)sk, __func__);
 	tcp_drop(sk, skb);
 }
 EXPORT_SYMBOL(tcp_rcv_established);
@@ -6283,7 +6283,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 
 	if (!queued) {
 discard:
-		printk(KERN_INFO "[%p][%s] discard\n", (void*)sk, __func__);
+		//printk(KERN_INFO "[%p][%s] discard\n", (void*)sk, __func__);
 		tcp_drop(sk, skb);
 	}
 	return 0;
