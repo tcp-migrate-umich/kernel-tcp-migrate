@@ -583,6 +583,9 @@ int tcp_send_synack(struct sock *);
 void tcp_push_one(struct sock *, unsigned int mss_now);
 void __tcp_send_ack(struct sock *sk, u32 rcv_nxt);
 void tcp_send_ack(struct sock *sk);
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+void tcp_send_migrate_req(struct sock *sk);
+#endif
 void tcp_send_delayed_ack(struct sock *sk);
 void tcp_send_loss_probe(struct sock *sk);
 bool tcp_schedule_loss_probe(struct sock *sk, bool advancing_rto);
@@ -1608,17 +1611,6 @@ int tcp_md5_hash_skb_data(struct tcp_md5sig_pool *, const struct sk_buff *,
 int tcp_md5_hash_key(struct tcp_md5sig_pool *hp,
 		     const struct tcp_md5sig_key *key);
 
-#if IS_ENABLED(CONFIG_TCP_MIGRATE)
-extern int migrate_syn;
-extern int migrate_syn_ack;
-
-/* #ifdef CONFIG_PROC_FS */
-/* void tcp_migrate_proc_init(void); */
-/* void tcp_migrate_proc_exit(void); */
-/* #endif */
-#endif
-
-
 /* From tcp_fastopen.c */
 void tcp_fastopen_cache_get(struct sock *sk, u16 *mss,
 			    struct tcp_fastopen_cookie *cookie);
@@ -1906,6 +1898,9 @@ int tcp_rtx_synack(const struct sock *sk, struct request_sock *req);
 int tcp_conn_request(struct request_sock_ops *rsk_ops,
 		     const struct tcp_request_sock_ops *af_ops,
 		     struct sock *sk, struct sk_buff *skb);
+#ifdef CONFIG_TCP_MIGRATE
+int tcp_v4_migrate_request(struct sk_buff *skb, struct tcp_options_received *opts);
+#endif
 
 /* TCP af-specific functions */
 struct tcp_sock_af_ops {

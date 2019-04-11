@@ -671,6 +671,8 @@ static void tcp_event_data_recv(struct sock *sk, struct sk_buff *skb)
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	u32 now;
 
+	//printk(KERN_INFO "[%p][%s] tcp_event_data_recv\n", (void*)sk, __func__);
+
 	inet_csk_schedule_ack(sk);
 
 	tcp_measure_rcv_mss(sk, skb);
@@ -3509,6 +3511,8 @@ static inline void tcp_in_ack_event(struct sock *sk, u32 flags)
 {
 	const struct inet_connection_sock *icsk = inet_csk(sk);
 
+	//printk(KERN_INFO "[%p][%s] flags=%x\n", (void*)sk, __func__, flags);
+
 	if (icsk->icsk_ca_ops->in_ack_event)
 		icsk->icsk_ca_ops->in_ack_event(sk, flags);
 }
@@ -3568,8 +3572,15 @@ static int tcp_ack(struct sock *sk, const struct sk_buff *skb, int flag)
 	int rexmit = REXMIT_NONE; /* Flag to (re)transmit to recover losses */
 	u32 prior_fack;
 
+	//printk(KERN_INFO "[%p][%s] tcp_ack\n", (void*)sk, __func__);
+
 	sack_state.first_sackt = 0;
 	sack_state.rate = &rs;
+
+	if (tp->migrate_req_snd) {
+		printk(KERN_INFO "[%p][%s] received ack from fixed host, acknowledging the migration. now set migrate_req_snd to false\n", (void*)sk, __func__);
+		tp->migrate_req_snd = false;
+	}
 
 	/* We very likely will need to access rtx queue. */
 	prefetch(sk->tcp_rtx_queue.rb_node);
@@ -3594,6 +3605,7 @@ static int tcp_ack(struct sock *sk, const struct sk_buff *skb, int flag)
 		return -1;
 
 	if (after(ack, prior_snd_una)) {
+		//printk(KERN_INFO "[%p][%s] after(ack,prior_snd_una)\n", (void*)sk, __func__);
 		flag |= FLAG_SND_UNA_ADVANCED;
 		icsk->icsk_retransmits = 0;
 
@@ -3672,6 +3684,7 @@ static int tcp_ack(struct sock *sk, const struct sk_buff *skb, int flag)
 		tcp_set_xmit_timer(sk);
 
 	if (tcp_ack_is_dubious(sk, flag)) {
+		//printk(KERN_INFO "[%p][%s] tcp ack is dubious\n", (void*)sk, __func__);
 		if (!(flag & (FLAG_SND_UNA_ADVANCED | FLAG_NOT_DUP))) {
 			num_dupack = 1;
 			/* Consider if pure acks were aggregated in tcp_add_backlog() */
@@ -3694,6 +3707,7 @@ static int tcp_ack(struct sock *sk, const struct sk_buff *skb, int flag)
 	return 1;
 
 no_queue:
+	//printk(KERN_INFO "[%p][%s] no_queue\n", (void*)sk, __func__);
 	/* If data was DSACKed, see if we can undo a cwnd reduction. */
 	if (flag & FLAG_DSACKING_ACK) {
 		tcp_fastretrans_alert(sk, prior_snd_una, num_dupack, &flag,
@@ -3711,6 +3725,7 @@ no_queue:
 	return 1;
 
 old_ack:
+	printk(KERN_INFO "[%p][%s] old ack\n", (void*)sk, __func__);
 	/* If data was SACKed, tag it and see if we should send more data.
 	 * If data was DSACKed, see if we can undo a cwnd reduction.
 	 */
@@ -3827,7 +3842,7 @@ void tcp_parse_options(const struct net *net,
 				break;
 
 			case TCPOPT_MIGRATE_REQ:
-				if (opsize == TCPOLEN_MIGRATE_REQ && th->syn) {
+				if (opsize == TCPOLEN_MIGRATE_REQ) {
 					printk(KERN_INFO "[%s] detected TCPOPT_MIGRATE_REQ!\n", __func__);
 					opt_rx->migrate_req = 1;
 					opt_rx->migrate_token = get_unaligned_be32(ptr);
@@ -4049,6 +4064,8 @@ static inline bool tcp_sequence(const struct tcp_sock *tp, u32 seq, u32 end_seq)
 /* When we get a reset we do this. */
 void tcp_reset(struct sock *sk)
 {
+	//printk(KERN_INFO "[%p][%s] tcp_reset\n", (void*)sk, __func__);
+
 	trace_tcp_receive_reset(sk);
 
 	/* We want the right error as BSD sees it (and indeed as we do). */
@@ -4214,6 +4231,8 @@ static void tcp_rcv_spurious_retrans(struct sock *sk, const struct sk_buff *skb)
 static void tcp_send_dupack(struct sock *sk, const struct sk_buff *skb)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
+
+	//printk(KERN_INFO "[%p][%s] tcp_send_dupack\n", (void*)sk, __func__);
 
 	if (TCP_SKB_CB(skb)->end_seq != TCP_SKB_CB(skb)->seq &&
 	    before(TCP_SKB_CB(skb)->seq, tp->rcv_nxt)) {
@@ -5171,6 +5190,8 @@ static void __tcp_ack_snd_check(struct sock *sk, int ofo_possible)
 	struct tcp_sock *tp = tcp_sk(sk);
 	unsigned long rtt, delay;
 
+	//printk(KERN_INFO "[%p][%s] __tcp_ack_snd_check\n", (void*)sk, __func__);
+
 	    /* More than one full frame received... */
 	if (((tp->rcv_nxt - tp->rcv_wup) > inet_csk(sk)->icsk_ack.rcv_mss &&
 	     /* ... and right edge of window advances far enough.
@@ -5185,6 +5206,7 @@ static void __tcp_ack_snd_check(struct sock *sk, int ofo_possible)
 	    /* Protocol state mandates a one-time immediate ACK */
 	    inet_csk(sk)->icsk_ack.pending & ICSK_ACK_NOW) {
 send_now:
+		//printk(KERN_INFO "[%p][%s] send_now\n", (void*)sk, __func__);
 		tcp_send_ack(sk);
 		return;
 	}
@@ -5220,6 +5242,7 @@ send_now:
 
 	delay = min_t(unsigned long, sock_net(sk)->ipv4.sysctl_tcp_comp_sack_delay_ns,
 		      rtt * (NSEC_PER_USEC >> 3)/20);
+	//printk(KERN_INFO "[%p][%s] about to set compressed_ack_timer\n", (void*)sk, __func__);
 	sock_hold(sk);
 	hrtimer_start(&tp->compressed_ack_timer, ns_to_ktime(delay),
 		      HRTIMER_MODE_REL_PINNED_SOFT);
@@ -5459,6 +5482,7 @@ syn_challenge:
 	return true;
 
 discard:
+	printk(KERN_INFO "[%p][%s] discard\n", (void*)sk, __func__);
 	tcp_drop(sk, skb);
 	return false;
 }
@@ -5491,6 +5515,8 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
 	const struct tcphdr *th = (const struct tcphdr *)skb->data;
 	struct tcp_sock *tp = tcp_sk(sk);
 	unsigned int len = skb->len;
+
+	//printk(KERN_INFO "[%p][%s] tcp_rcv_established\n", (void*)sk, __func__);
 
 	/* TCP congestion window tracking */
 	trace_tcp_probe(sk, skb);
@@ -5554,6 +5580,7 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
 		if (len <= tcp_header_len) {
 			/* Bulk data transfer: sender */
 			if (len == tcp_header_len) {
+				//printk(KERN_INFO "[%p][%s] fast path: pure ack\n", (void*) sk, __func__);
 				/* Predicted packet is in window by definition.
 				 * seq == rcv_nxt and rcv_wup <= rcv_nxt.
 				 * Hence, check seq<=rcv_wup reduces to:
@@ -5618,6 +5645,7 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
 
 			__tcp_ack_snd_check(sk, 0);
 no_ack:
+			//printk("[%p][%s] no_ack\n", (void*)sk, __func__);
 			if (eaten)
 				kfree_skb_partial(skb, fragstolen);
 			tcp_data_ready(sk);
@@ -5626,6 +5654,7 @@ no_ack:
 	}
 
 slow_path:
+	//printk(KERN_INFO "[%p][%s] slow_path\n", (void*)sk, __func__);
 	if (len < (th->doff << 2) || tcp_checksum_complete(skb))
 		goto csum_error;
 
@@ -5640,6 +5669,7 @@ slow_path:
 		return;
 
 step5:
+	//printk(KERN_INFO "[%p][%s] step5\n", (void*)sk, __func__);
 	if (tcp_ack(sk, skb, FLAG_SLOWPATH | FLAG_UPDATE_TS_RECENT) < 0)
 		goto discard;
 
@@ -5656,10 +5686,12 @@ step5:
 	return;
 
 csum_error:
+	printk(KERN_INFO "[%p][%s] csum_error\n", (void*)sk, __func__);
 	TCP_INC_STATS(sock_net(sk), TCP_MIB_CSUMERRORS);
 	TCP_INC_STATS(sock_net(sk), TCP_MIB_INERRS);
 
 discard:
+	printk(KERN_INFO "[%p][%s] discard\n", (void*)sk, __func__);
 	tcp_drop(sk, skb);
 }
 EXPORT_SYMBOL(tcp_rcv_established);
@@ -6006,6 +6038,8 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 	int queued = 0;
 	bool acceptable;
 
+	//printk(KERN_INFO "[%p][%s] tcp_rcv_state_process\n", (void*)sk, __func__);
+
 	switch (sk->sk_state) {
 	case TCP_CLOSE:
 		goto discard;
@@ -6249,6 +6283,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 
 	if (!queued) {
 discard:
+		printk(KERN_INFO "[%p][%s] discard\n", (void*)sk, __func__);
 		tcp_drop(sk, skb);
 	}
 	return 0;
@@ -6485,7 +6520,7 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 	if (tmp_opt.migrate_perm) {
 		tp->migrate_enabled = true;
 		tp->migrate_token = tmp_opt.migrate_token;
-		printk(KERN_INFO "[%s] token %u\n", __func__, tp->migrate_token);
+		printk(KERN_INFO "[%p][%s] received token in a syn: %u\n", (void*)sk, __func__, tp->migrate_token);
     tcp_rsk(req)->migrate_enabled = true;
     tcp_rsk(req)->migrate_token = tmp_opt.migrate_token;
 	}
@@ -6572,3 +6607,9 @@ drop:
 	return 0;
 }
 EXPORT_SYMBOL(tcp_conn_request);
+
+int tcp_v4_migrate_request(struct sk_buff *skb, struct tcp_options_received *opts) {
+	return -1;
+}
+EXPORT_SYMBOL(tcp_v4_migrate_request);
+

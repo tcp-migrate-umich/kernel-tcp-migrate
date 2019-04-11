@@ -809,6 +809,20 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 	}
 #endif
 
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	if (tp->migrate_req_snd) { 
+		printk(KERN_INFO "[%p][%s] preparing MIGRATE_REQ option\n", (void*)sk, __func__);
+		opts->options |= OPTION_MIGRATE;
+		opts->migrate_req = 1;
+		if (tp->migrate_token) {
+			opts->migrate_token = tp->migrate_token;
+			size += TCPOLEN_MIGRATE_REQ_ALIGNED;
+		} else {
+			printk(KERN_INFO "[%p][%s] no token was found in tp!\n", (void*)sk, __func__);
+		}
+	}
+#endif
+
 	if (likely(tp->rx_opt.tstamp_ok)) {
 		opts->options |= OPTION_TS;
 		opts->tsval = skb ? tcp_skb_timestamp(skb) + tp->tsoffset : 0;
@@ -3722,6 +3736,33 @@ void tcp_send_ack(struct sock *sk)
 {
 	__tcp_send_ack(sk, tcp_sk(sk)->rcv_nxt);
 }
+
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+/* This routine sends an ack and also updates the window. */
+void tcp_send_migrate_req(struct sock *sk)
+{
+	struct tcp_sock *tp = tcp_sk(sk);
+
+	printk(KERN_INFO "[%p][%s] sending migrate request\n", (void*)sk, __func__);
+
+	if (!tp->migrate_enabled) {
+		printk(KERN_INFO "[%p][%s] migration is not enabled in this socket?\n", (void*)sk, __func__);
+		return;
+  	}
+
+	if (tp->migrate_req_snd) {
+		printk(KERN_INFO "[%p][%s] migrate_req_snd already set?\n", (void*)sk, __func__);
+		return;
+	}
+
+	// Enable this so that tcp_established_options
+	// knows to add the MIGRATE_REQ option.
+	tp->migrate_req_snd = true;
+
+	__tcp_send_ack(sk, tp->rcv_nxt);
+}
+EXPORT_SYMBOL_GPL(tcp_send_migrate_req);
+#endif
 
 /* This routine sends a packet with an out of date sequence
  * number. It assumes the other end will try to ack it.

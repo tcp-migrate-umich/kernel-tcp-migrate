@@ -1541,6 +1541,8 @@ int tcp_v4_do_rcv(struct sock *sk, struct sk_buff *skb)
 {
 	struct sock *rsk;
 
+	//printk(KERN_INFO "[%p][%s] tcp_v4_do_rcv\n", (void*)sk, __func__);
+
 	if (sk->sk_state == TCP_ESTABLISHED) { /* Fast path */
 		struct dst_entry *dst = sk->sk_rx_dst;
 
@@ -1582,8 +1584,10 @@ int tcp_v4_do_rcv(struct sock *sk, struct sk_buff *skb)
 	return 0;
 
 reset:
+	printk(KERN_INFO "[%p][%s] reset\n", (void*)sk, __func__);
 	tcp_v4_send_reset(rsk, skb);
 discard:
+	printk(KERN_INFO "[%p][%s] discard\n", (void*)sk, __func__);
 	kfree_skb(skb);
 	/* Be careful here. If this function gets more complicated and
 	 * gcc suffers from register pressure on the x86, sk (in %ebx)
@@ -1593,6 +1597,7 @@ discard:
 	return 0;
 
 csum_err:
+	printk(KERN_INFO "[%p][%s] csum_err\n", (void*)sk, __func__);
 	TCP_INC_STATS(sock_net(sk), TCP_MIB_CSUMERRORS);
 	TCP_INC_STATS(sock_net(sk), TCP_MIB_INERRS);
 	goto discard;
@@ -1794,7 +1799,10 @@ int tcp_v4_rcv(struct sk_buff *skb)
 	const struct tcphdr *th;
 	bool refcounted;
 	struct sock *sk;
+	struct tcp_options_received tmp_opt;
 	int ret;
+
+	sk = NULL;
 
 	if (skb->pkt_type != PACKET_HOST)
 		goto discard_it;
@@ -1927,12 +1935,27 @@ process:
 	bh_unlock_sock(sk);
 
 put_and_return:
+	//printk(KERN_INFO "[%p][%s] put_and_return\n", (void*)sk, __func__);
 	if (refcounted)
 		sock_put(sk);
 
 	return ret;
 
 no_tcp_socket:
+	printk(KERN_INFO "[%s] no_tcp_socket\n", __func__);
+	/* Check to see if this is a migration request */
+	tcp_clear_options(&tmp_opt);
+	tcp_parse_options(net, skb, &tmp_opt, 1, NULL);
+	if (tmp_opt.migrate_req) {
+		printk(KERN_INFO "[%s] received a migrate request with token %i\n", __func__, tmp_opt.migrate_token);
+		if (tcp_v4_migrate_request(skb, &tmp_opt)) {
+			printk(KERN_INFO "[%s] successfully migrated\n", __func__);
+			return 0;
+		} else {
+			printk(KERN_INFO "[%s] migration failed\n", __func__);
+		}
+	}
+
 	if (!xfrm4_policy_check(NULL, XFRM_POLICY_IN, skb))
 		goto discard_it;
 
@@ -1940,25 +1963,30 @@ no_tcp_socket:
 
 	if (tcp_checksum_complete(skb)) {
 csum_error:
+		printk(KERN_INFO "[%p][%s] csum_error\n", (void*)sk, __func__);
 		__TCP_INC_STATS(net, TCP_MIB_CSUMERRORS);
 bad_packet:
+		printk(KERN_INFO "[%p][%s] bad_packet\n", (void*)sk, __func__);
 		__TCP_INC_STATS(net, TCP_MIB_INERRS);
 	} else {
 		tcp_v4_send_reset(NULL, skb);
 	}
 
 discard_it:
+	printk(KERN_INFO "[%p][%s] discard_it\n", (void*)sk, __func__);
 	/* Discard frame. */
 	kfree_skb(skb);
 	return 0;
 
 discard_and_relse:
+	printk(KERN_INFO "[%p][%s] discard_and_relse\n", (void*)sk, __func__);
 	sk_drops_add(sk, skb);
 	if (refcounted)
 		sock_put(sk);
 	goto discard_it;
 
 do_time_wait:
+	//printk(KERN_INFO "[%p][%s] do_time_wait\n", (void*)sk, __func__);
 	if (!xfrm4_policy_check(NULL, XFRM_POLICY_IN, skb)) {
 		inet_twsk_put(inet_twsk(sk));
 		goto discard_it;
@@ -2545,6 +2573,8 @@ static void get_tcp_mig_sock(struct sock *sk, struct seq_file *f, int i)
 
 	if (!migrate_enabled)
 		goto skip;
+
+	tcp_send_migrate_req(sk);
 
 	state = inet_sk_state_load(sk);
 	migrate_token = tp->migrate_token;
