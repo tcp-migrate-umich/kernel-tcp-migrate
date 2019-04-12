@@ -1483,10 +1483,11 @@ struct sock *tcp_v4_syn_recv_sock(const struct sock *sk, struct sk_buff *skb,
 		 * currently, assuming that no incoming connection for time
 		 * between SYN-ACK by server and ACK by client.
 		 */
-		printk("[%s] setting child token to %u\n", __func__, tcp_rsk(req)->migrate_token);
+		printk(KERN_INFO "[%p][%s] setting child token to %u\n", (void*)sk, __func__, tcp_rsk(req)->migrate_token);
 		newtp->migrate_enabled = tcp_rsk(req)->migrate_enabled;
 		newtp->migrate_token = tcp_rsk(req)->migrate_token;
 	} else {
+		printk(KERN_INFO "[%p][%s] creating child sock but migrate not enabled. setting child token to 0.\n", (void*)sk, __func__);
 		newtp->migrate_enabled = false;
 		newtp->migrate_token = 0;
 	}
@@ -1947,12 +1948,12 @@ no_tcp_socket:
 	tcp_clear_options(&tmp_opt);
 	tcp_parse_options(net, skb, &tmp_opt, 1, NULL);
 	if (tmp_opt.migrate_req) {
-		printk(KERN_INFO "[%s] received a migrate request with token %i\n", __func__, tmp_opt.migrate_token);
+		printk(KERN_INFO "[%p][%s] received a migrate request with token %i\n", (void*)sk, __func__, tmp_opt.migrate_token);
 		if (tcp_v4_migrate_request(skb, &tmp_opt)) {
-			printk(KERN_INFO "[%s] successfully migrated\n", __func__);
-			return 0;
+			printk(KERN_INFO "[%p][%s] migration failed\n", (void*)sk, __func__);
 		} else {
-			printk(KERN_INFO "[%s] migration failed\n", __func__);
+			printk(KERN_INFO "[%p][%s] successfully migrated\n", (void*)sk, __func__);
+			return 0;
 		}
 	}
 

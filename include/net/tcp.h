@@ -52,6 +52,10 @@ extern struct inet_hashinfo tcp_hashinfo;
 extern struct percpu_counter tcp_orphan_count;
 void tcp_time_wait(struct sock *sk, int state, int timeo);
 
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+extern struct sock *migrate_sock;
+#endif
+
 #define MAX_TCP_HEADER	(128 + MAX_HEADER)
 #define MAX_TCP_OPTION_SPACE 40
 

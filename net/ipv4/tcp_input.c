@@ -6608,8 +6608,37 @@ drop:
 }
 EXPORT_SYMBOL(tcp_conn_request);
 
+struct sock *tcp_v4_migrate_lookup(struct sk_buff *skb, u32 token) {
+	return migrate_sock;
+}
+
 int tcp_v4_migrate_request(struct sk_buff *skb, struct tcp_options_received *opts) {
-	return -1;
+	struct sock *sk;
+	const struct iphdr *iph;
+	__be32 remote_addr;
+	u32 token = opts->migrate_token;
+
+	printk(KERN_INFO "[%s] token received is %u\n", __func__, token);
+
+	iph = ip_hdr(skb);
+	printk(KERN_INFO "[%s] iph = %p\n", __func__, iph);
+
+	// Migrate connection to this address:
+	remote_addr = iph->saddr;
+	printk(KERN_INFO "[%s] remote addr is: %x\n", __func__, ntohl(remote_addr));
+
+	/* Find the sock with this token */
+	sk = tcp_v4_migrate_lookup(skb, token);
+
+	if (!sk) {
+		printk(KERN_INFO "[%s] could not find socket with token %u\n", __func__, token);
+		return -1;
+	}
+
+	printk(KERN_INFO "[%p][%s] Found sock and setting its daddr\n", (void*)sk, __func__);
+	sk->sk_daddr = remote_addr;
+
+	return 0;
 }
 EXPORT_SYMBOL(tcp_v4_migrate_request);
 

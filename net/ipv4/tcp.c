@@ -283,6 +283,11 @@
 #include <asm/ioctls.h>
 #include <net/busy_poll.h>
 
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+struct sock *migrate_sock = NULL;
+EXPORT_SYMBOL(migrate_sock);
+#endif
+
 struct percpu_counter tcp_orphan_count;
 EXPORT_SYMBOL_GPL(tcp_orphan_count);
 
@@ -453,6 +458,7 @@ void tcp_init_sock(struct sock *sk)
 	sk->sk_rcvbuf = sock_net(sk)->ipv4.sysctl_tcp_rmem[1];
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	printk(KERN_INFO "[%p][%s] tcp_init_sock/n", (void*)sk, __func__);
 	tp->migrate_enabled = false;
 	tp->migrate_req_snd = false;
 	tp->migrate_token = 0;
@@ -2946,6 +2952,7 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 		if (!tp->repair)
 			err = -EINVAL;
 		else
+			printk(KERN_INFO "[%p][%s] setsockopt MIGRATE_TOKEN %u/n", (void*)sk, __func__, val);
 			tp->migrate_token = val;
 		break;
 #endif
@@ -3570,6 +3577,7 @@ static int do_tcp_getsockopt(struct sock *sk, int level,
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
 	case TCP_MIGRATE_ENABLED:
+		printk(KERN_INFO "[%p][%s] getting MIGRATE_ENABLED sockopt\n", (void*)sk, __func__);
 		if (tp->migrate_enabled)
 			val = 1;
 		else
@@ -3577,6 +3585,7 @@ static int do_tcp_getsockopt(struct sock *sk, int level,
 		break;
 
 	case TCP_MIGRATE_TOKEN:
+		printk(KERN_INFO "[%p][%s] getting MIGRATE_TOKEN sockopt (is %u)\n", (void*)sk, __func__, tp->migrate_token);
 		if (tp->repair)
 			val = tp->migrate_token;
 		else

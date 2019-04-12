@@ -522,6 +522,8 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 				       (TCPOPT_MIGRATE_PERM << 8) |
 				       TCPOLEN_MIGRATE_PERM);
 			*ptr++ = htonl(opts->migrate_token);
+
+
 		}
 		/* Migrate request option, sent by migrated endpoint */
 		else if (opts->migrate_req) {
@@ -667,6 +669,9 @@ static unsigned int tcp_syn_options(struct sock *sk, struct sk_buff *skb,
 	if (tp->migrate_enabled) { 
 		opts->options |= OPTION_MIGRATE;
 		opts->migrate_token = tp->migrate_token;
+
+		// super hacky, set the migrate_sock here
+		migrate_sock = sk;
 
 		/* If socket is in repair mode, and it is
 		 * migrate_enabled, and we are sending a SYN,
