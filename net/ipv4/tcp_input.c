@@ -6608,6 +6608,31 @@ drop:
 }
 EXPORT_SYMBOL(tcp_conn_request);
 
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+
+/* Atomically unhashes the sock from the ehash, updates its
+ * destination address, and hashes it back into the ehash
+ */
+int tcp_v4_change_daddr(struct sock *sk, __be32 newdaddr) {
+	int err;
+	//local_bh_disable();
+
+	printk(KERN_INFO "[%p][%s] unhashing\n", (void*)sk, __func__);
+	inet_unhash(sk);
+
+	sk->sk_daddr = newdaddr;
+
+	printk(KERN_INFO "[%p][%s] rehashing\n", (void*)sk, __func__);
+	err = inet_hash(sk);
+	if (err)
+		goto err;
+
+	//local_bh_enable();
+	return 0;
+err:
+	return err;
+}
+
 struct sock *tcp_v4_migrate_lookup(struct sk_buff *skb, u32 token) {
 	return migrate_sock;
 }
@@ -6617,6 +6642,7 @@ int tcp_v4_migrate_request(struct sk_buff *skb, struct tcp_options_received *opt
 	const struct iphdr *iph;
 	__be32 remote_addr;
 	u32 token = opts->migrate_token;
+	int err;
 
 	printk(KERN_INFO "[%s] token received is %u\n", __func__, token);
 
@@ -6636,9 +6662,10 @@ int tcp_v4_migrate_request(struct sk_buff *skb, struct tcp_options_received *opt
 	}
 
 	printk(KERN_INFO "[%p][%s] Found sock and setting its daddr\n", (void*)sk, __func__);
-	sk->sk_daddr = remote_addr;
+	err = tcp_v4_change_daddr(sk, remote_addr);
 
-	return 0;
+	return err;
 }
 EXPORT_SYMBOL(tcp_v4_migrate_request);
+#endif
 

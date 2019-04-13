@@ -3732,6 +3732,10 @@ void __tcp_send_ack(struct sock *sk, u32 rcv_nxt)
 	 */
 	skb_set_tcp_pure_ack(buff);
 
+	if (tcp_sk(sk)->migrate_req_snd) {
+		//printk(KERN_INFO "[%p][%s] double-preparing \n");
+	}
+
 	/* Send it off, this clears delayed acks for us. */
 	__tcp_transmit_skb(sk, buff, 0, (__force gfp_t)0, rcv_nxt);
 }

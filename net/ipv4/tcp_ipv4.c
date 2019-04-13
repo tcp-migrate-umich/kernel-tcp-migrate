@@ -2560,7 +2560,7 @@ static const struct seq_operations tcp4_seq_ops = {
 
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
-static void get_tcp_mig_sock(struct sock *sk, struct seq_file *f, int i)
+static void get_tcp_mig_send_sock(struct sock *sk, struct seq_file *f, int i)
 {
 	const struct tcp_sock *tp = tcp_sk(sk);
 	const struct inet_sock *inet = inet_sk(sk);
@@ -2585,13 +2585,13 @@ static void get_tcp_mig_sock(struct sock *sk, struct seq_file *f, int i)
 		);
 	seq_pad(f, '\n');
 
+	// JOSEPH
 	/* TODO: given tcp_mig socket, now put the socket into MIG_SYN state
 	 */
 skip:
 	return;
 }
-static int tcp_mig_seq_show(struct seq_file *seq, void *v)
-{
+static int tcp_mig_send_show(struct seq_file *seq, void *v) {
 	struct tcp_iter_state *st;
 	struct sock *sk = v;
 
@@ -2602,16 +2602,54 @@ static int tcp_mig_seq_show(struct seq_file *seq, void *v)
 	}
 	st = seq->private;
 
-	if (sk->sk_state != TCP_TIME_WAIT && sk->sk_state != TCP_NEW_SYN_RECV)
-		get_tcp_mig_sock(v, seq, st->num);
+	if (sk->sk_state != TCP_TIME_WAIT && sk->sk_state != TCP_NEW_SYN_RECV) {
+		get_tcp_mig_send_sock(v, seq, st->num);
+	}
+
+out:
+	return 0;
+}
+static void get_tcp_mig_check_sock(struct sock *sk, struct seq_file *f, int i)
+{
+	const struct tcp_sock *tp = tcp_sk(sk);
+	bool migrate_enabled = tp->migrate_enabled;
+	bool awaiting_ack = tp->migrate_req_snd;
+
+	if (!migrate_enabled)
+		goto skip;
+
+	seq_printf(f, "%i", awaiting_ack);
+	seq_pad(f, '\n');
+skip:
+	return;
+}
+static int tcp_mig_check_show(struct seq_file *seq, void *v) {
+	struct tcp_iter_state *st;
+	struct sock *sk = v;
+
+	seq_setwidth(seq, 1);
+	if (v == SEQ_START_TOKEN) {
+		goto out;
+	}
+	st = seq->private;
+
+	if (sk->sk_state != TCP_TIME_WAIT && sk->sk_state != TCP_NEW_SYN_RECV) {
+		get_tcp_mig_check_sock(v, seq, st->num);
+	}
 
 out:
 	return 0;
 }
 
 
-static const struct seq_operations tcp_mig_seq_ops = {
-	.show		= tcp_mig_seq_show,
+static const struct seq_operations tcp_mig_send_seq_ops = {
+	.show		= tcp_mig_send_show,
+	.start		= tcp_seq_start,
+	.next		= tcp_seq_next,
+	.stop		= tcp_seq_stop,
+};
+static const struct seq_operations tcp_mig_check_seq_ops = {
+	.show		= tcp_mig_check_show,
 	.start		= tcp_seq_start,
 	.next		= tcp_seq_next,
 	.stop		= tcp_seq_stop,
@@ -2628,7 +2666,10 @@ static int __net_init tcp4_proc_init_net(struct net *net)
 			sizeof(struct tcp_iter_state), &tcp4_seq_afinfo))
 		return -ENOMEM;
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
-	if (!proc_create_net_data("tcp_mig_syn", 0444, net->proc_net, &tcp_mig_seq_ops,
+	if (!proc_create_net_data("tcp_mig_req_send", 0444, net->proc_net, &tcp_mig_send_seq_ops,
+			sizeof(struct tcp_iter_state), &tcp4_seq_afinfo))
+		return -ENOMEM;
+	if (!proc_create_net_data("tcp_mig_req_check", 0444, net->proc_net, &tcp_mig_check_seq_ops,
 			sizeof(struct tcp_iter_state), &tcp4_seq_afinfo))
 		return -ENOMEM;
 #endif
@@ -2639,7 +2680,8 @@ static void __net_exit tcp4_proc_exit_net(struct net *net)
 {
 	remove_proc_entry("tcp", net->proc_net);
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
-	remove_proc_entry("tcp_mig_syn", net->proc_net);
+	remove_proc_entry("tcp_mig_req_send", net->proc_net);
+	remove_proc_entry("tcp_mig_req_check", net->proc_net);
 #endif
 }
 
