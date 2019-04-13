@@ -1487,7 +1487,7 @@ struct sock *tcp_v4_syn_recv_sock(const struct sock *sk, struct sk_buff *skb,
 		newtp->migrate_enabled = tcp_rsk(req)->migrate_enabled;
 		newtp->migrate_token = tcp_rsk(req)->migrate_token;
 	} else {
-		printk(KERN_INFO "[%p][%s] creating child sock but migrate not enabled. setting child token to 0.\n", (void*)sk, __func__);
+		/* printk(KERN_INFO "[%p][%s] creating child sock but migrate not enabled. setting child token to 0.\n", (void*)sk, __func__); */
 		newtp->migrate_enabled = false;
 		newtp->migrate_token = 0;
 	}

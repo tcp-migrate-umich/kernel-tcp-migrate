@@ -458,7 +458,6 @@ void tcp_init_sock(struct sock *sk)
 	sk->sk_rcvbuf = sock_net(sk)->ipv4.sysctl_tcp_rmem[1];
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
-	printk(KERN_INFO "[%p][%s] tcp_init_sock/n", (void*)sk, __func__);
 	tp->migrate_enabled = false;
 	tp->migrate_req_snd = false;
 	tp->migrate_token = 0;
@@ -4017,4 +4016,7 @@ void __init tcp_init(void)
 	tcp_metrics_init();
 	BUG_ON(tcp_register_congestion_control(&tcp_reno) != 0);
 	tcp_tasklet_init();
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	printk(KERN_INFO "TCP Seamless Migration: Pre-release v0.1.0\n");
+#endif
 }
