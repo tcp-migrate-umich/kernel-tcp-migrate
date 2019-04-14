@@ -134,6 +134,8 @@ enum {
 #define TCP_REPAIR_OFF		0
 #define TCP_REPAIR_OFF_NO_WP	-1	/* Turn off without window probes */
 
+#define TCP_MIGRATE_NOTOKEN	0xFFFFFFFF
+
 struct tcp_repair_opt {
 	__u32	opt_code;
 	__u32	opt_val;

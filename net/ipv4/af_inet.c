@@ -494,6 +494,14 @@ int __inet_bind(struct sock *sk, struct sockaddr *uaddr, int addr_len,
 		goto out;
 
 	snum = ntohs(addr->sin_port);
+
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	// TODO remove
+	if (snum == 22) {
+		tcp_sk(sk)->migrate_enabled = false;
+	}
+#endif
+
 	err = -EACCES;
 	if (snum && snum < inet_prot_sock(net) &&
 	    !ns_capable(net->user_ns, CAP_NET_BIND_SERVICE))

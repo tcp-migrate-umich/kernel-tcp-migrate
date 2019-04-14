@@ -53,7 +53,9 @@ extern struct percpu_counter tcp_orphan_count;
 void tcp_time_wait(struct sock *sk, int state, int timeo);
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
-extern struct sock *migrate_sock;
+/* Global array of migrate_enabled sockets */
+#define MAX_TOKEN 10000
+extern struct sock *migrate_socks[MAX_TOKEN];
 #endif
 
 #define MAX_TCP_HEADER	(128 + MAX_HEADER)
@@ -589,6 +591,10 @@ void __tcp_send_ack(struct sock *sk, u32 rcv_nxt);
 void tcp_send_ack(struct sock *sk);
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
 void tcp_send_migrate_req(struct sock *sk);
+int tcp_v4_migrate_hash(struct sock *sk);
+int tcp_v4_migrate_unhash(struct sock *sk);
+int tcp_v4_migrate_hash_place(struct sock *sk, u32 token);
+bool tcp_v4_migrate_unhashed(const struct sock *sk);
 #endif
 void tcp_send_delayed_ack(struct sock *sk);
 void tcp_send_loss_probe(struct sock *sk);

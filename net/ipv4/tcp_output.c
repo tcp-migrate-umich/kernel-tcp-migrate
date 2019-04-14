@@ -670,9 +670,6 @@ static unsigned int tcp_syn_options(struct sock *sk, struct sk_buff *skb,
 		opts->options |= OPTION_MIGRATE;
 		opts->migrate_token = tp->migrate_token;
 
-		// super hacky, set the migrate_sock here
-		migrate_sock = sk;
-
 		/* If socket is in repair mode, and it is
 		 * migrate_enabled, and we are sending a SYN,
 		 * then we must be requesting the client to
@@ -3599,12 +3596,28 @@ int tcp_connect(struct sock *sk)
 	if (inet_csk(sk)->icsk_af_ops->rebuild_header(sk))
 		return -EHOSTUNREACH; /* Routing failure or similar. */
 
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	// TODO remove: disable migration for ssh
+	if (ntohs(inet_sk(sk)->inet_dport) == 22 || ntohs(inet_sk(sk)->inet_num) == 22) {
+		tp->migrate_enabled = false;
+	}
+#endif
+
 	tcp_connect_init(sk);
 
 	if (unlikely(tp->repair)) {
 		tcp_finish_connect(sk, NULL);
 		return 0;
 	}
+
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	/* assign this socket a migrate token */
+	if (tp->migrate_enabled) {
+		err = tcp_v4_migrate_hash(sk);
+		if (err)
+			return err;
+	}
+#endif
 
 	buff = sk_stream_alloc_skb(sk, 0, sk->sk_allocation, true);
 	if (unlikely(!buff))
@@ -3761,6 +3774,8 @@ void tcp_send_migrate_req(struct sock *sk)
 		printk(KERN_INFO "[%p][%s] migrate_req_snd already set?\n", (void*)sk, __func__);
 		return;
 	}
+
+	WARN_ON(tcp_v4_migrate_unhashed(sk));
 
 	printk(KERN_INFO "[%p][%s] sending migrate request\n", (void*)sk, __func__);
 

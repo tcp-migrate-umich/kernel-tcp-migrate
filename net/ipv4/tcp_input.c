@@ -6368,7 +6368,7 @@ static void tcp_openreq_init(struct request_sock *req,
 #endif
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
 	tcp_rsk(req)->migrate_enabled = 0;
-	tcp_rsk(req)->migrate_token = 0;
+	tcp_rsk(req)->migrate_token = TCP_MIGRATE_NOTOKEN;
 #endif
 }
 
@@ -6521,8 +6521,6 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 		tp->migrate_enabled = true;
 		tp->migrate_token = tmp_opt.migrate_token;
 		printk(KERN_INFO "[%p][%s] received token in a syn: %u\n", (void*)sk, __func__, tp->migrate_token);
-    tcp_rsk(req)->migrate_enabled = true;
-    tcp_rsk(req)->migrate_token = tmp_opt.migrate_token;
 	}
 #endif
 
@@ -6633,8 +6631,11 @@ err:
 	return err;
 }
 
-struct sock *tcp_v4_migrate_lookup(struct sk_buff *skb, u32 token) {
-	return migrate_sock;
+struct sock *tcp_v4_migrate_lookup(u32 token) {
+	if (token >= MAX_TOKEN) {
+		return NULL;
+	}
+	return migrate_socks[token];
 }
 
 int tcp_v4_migrate_request(struct sk_buff *skb, struct tcp_options_received *opts) {
@@ -6654,7 +6655,7 @@ int tcp_v4_migrate_request(struct sk_buff *skb, struct tcp_options_received *opt
 	printk(KERN_INFO "[%s] remote addr is: %x\n", __func__, ntohl(remote_addr));
 
 	/* Find the sock with this token */
-	sk = tcp_v4_migrate_lookup(skb, token);
+	sk = tcp_v4_migrate_lookup(token);
 
 	if (!sk) {
 		printk(KERN_INFO "[%s] could not find socket with token %u\n", __func__, token);

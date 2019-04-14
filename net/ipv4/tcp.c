@@ -284,8 +284,8 @@
 #include <net/busy_poll.h>
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
-struct sock *migrate_sock = NULL;
-EXPORT_SYMBOL(migrate_sock);
+struct sock *migrate_socks[MAX_TOKEN];
+EXPORT_SYMBOL(migrate_socks);
 #endif
 
 struct percpu_counter tcp_orphan_count;
@@ -459,9 +459,9 @@ void tcp_init_sock(struct sock *sk)
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
 	printk(KERN_INFO "[%p][%s] tcp_init_sock/n", (void*)sk, __func__);
-	tp->migrate_enabled = false;
+	tp->migrate_enabled = true;
 	tp->migrate_req_snd = false;
-	tp->migrate_token = 0;
+	tp->migrate_token = TCP_MIGRATE_NOTOKEN;
 #endif
 
 	sk_sockets_allocated_inc(sk);
@@ -2267,6 +2267,10 @@ void tcp_set_state(struct sock *sk, int state)
 		if (oldstate == TCP_CLOSE_WAIT || oldstate == TCP_ESTABLISHED)
 			TCP_INC_STATS(sock_net(sk), TCP_MIB_ESTABRESETS);
 
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+		if (tcp_sk(sk)->migrate_enabled)
+			tcp_v4_migrate_unhash(sk);
+#endif
 		sk->sk_prot->unhash(sk);
 		if (inet_csk(sk)->icsk_bind_hash &&
 		    !(sk->sk_userlocks & SOCK_BINDPORT_LOCK))
@@ -2940,20 +2944,24 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 			tp->migrate_enabled = true;
 		else
 			tp->migrate_enabled = false;
-		/* beta version w/ token passing */
-		if (val) {
-			tp->migrate_token = (uint32_t) val;
-			printk(KERN_INFO "[%p][%s] setting token to %u\n", (void*)sk, __func__,
-					tp->migrate_token);
-		}
 		break;
 
 	case TCP_MIGRATE_TOKEN:
-		if (!tp->repair)
+		if (!tp->repair || !tp->migrate_enabled)
 			err = -EINVAL;
-		else
+		else {
 			printk(KERN_INFO "[%p][%s] setsockopt MIGRATE_TOKEN %u/n", (void*)sk, __func__, val);
 			tp->migrate_token = val;
+			/* place socket into the migrate hash */
+			printk(KERN_INFO "[%p][%s] placing socket into migrate hash\n", (void*)sk, __func__);
+			if (tcp_v4_migrate_hash_place(sk, val)) {
+				err = -EINVAL;
+				break;
+			}
+			/* automatically send migrate request */
+			printk(KERN_INFO "[%p][%s] automatically sending migrate request\n", (void*)sk, __func__);
+			tcp_send_migrate_req(sk);
+		}
 		break;
 #endif
 
@@ -4012,6 +4020,10 @@ void __init tcp_init(void)
 
 	pr_info("Hash tables configured (established %u bind %u)\n",
 		tcp_hashinfo.ehash_mask + 1, tcp_hashinfo.bhash_size);
+
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
+	memset(migrate_socks, 0, sizeof(migrate_socks));
+#endif
 
 	tcp_v4_init();
 	tcp_metrics_init();
