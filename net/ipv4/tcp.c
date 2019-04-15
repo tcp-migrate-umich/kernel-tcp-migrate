@@ -2267,7 +2267,7 @@ void tcp_set_state(struct sock *sk, int state)
 			TCP_INC_STATS(sock_net(sk), TCP_MIB_ESTABRESETS);
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
-		if (tcp_sk(sk)->migrate_enabled)
+		if (tcp_sk(sk)->migrate_enabled && tcp_sk(sk)->migrate_token != TCP_MIGRATE_NOTOKEN)
 			tcp_v4_migrate_unhash(sk);
 #endif
 		sk->sk_prot->unhash(sk);
