@@ -3745,9 +3745,11 @@ void __tcp_send_ack(struct sock *sk, u32 rcv_nxt)
 	 */
 	skb_set_tcp_pure_ack(buff);
 
+#if IS_ENABLED(CONFIG_TCP_MIGRATE)
 	if (tcp_sk(sk)->migrate_req_snd) {
 		//printk(KERN_INFO "[%p][%s] double-preparing \n");
 	}
+#endif
 
 	/* Send it off, this clears delayed acks for us. */
 	__tcp_transmit_skb(sk, buff, 0, (__force gfp_t)0, rcv_nxt);
@@ -3758,35 +3760,6 @@ void tcp_send_ack(struct sock *sk)
 {
 	__tcp_send_ack(sk, tcp_sk(sk)->rcv_nxt);
 }
-
-#if IS_ENABLED(CONFIG_TCP_MIGRATE)
-/* This routine sends an ack and also updates the window. */
-void tcp_send_migrate_req(struct sock *sk)
-{
-	struct tcp_sock *tp = tcp_sk(sk);
-
-	if (!tp->migrate_enabled) {
-		printk(KERN_INFO "[%p][%s] migration is not enabled in this socket?\n", (void*)sk, __func__);
-		return;
-  	}
-
-	if (tp->migrate_req_snd) {
-		printk(KERN_INFO "[%p][%s] migrate_req_snd already set?\n", (void*)sk, __func__);
-		return;
-	}
-
-	WARN_ON(tcp_v4_migrate_unhashed(sk));
-
-	printk(KERN_INFO "[%p][%s] sending migrate request\n", (void*)sk, __func__);
-
-	// Enable this so that tcp_established_options
-	// knows to add the MIGRATE_REQ option.
-	tp->migrate_req_snd = true;
-
-	__tcp_send_ack(sk, tp->rcv_nxt);
-}
-EXPORT_SYMBOL_GPL(tcp_send_migrate_req);
-#endif
 
 /* This routine sends a packet with an out of date sequence
  * number. It assumes the other end will try to ack it.

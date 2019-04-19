@@ -2051,6 +2051,10 @@ static int __init ipv4_proc_init(void)
 		goto out_raw;
 	if (tcp4_proc_init())
 		goto out_tcp;
+#ifdef CONFIG_TCP_MIGRATE
+  if (tcpmig_proc_init())
+    goto out_tcpmig;
+#endif
 	if (udp4_proc_init())
 		goto out_udp;
 	if (ping_proc_init())
@@ -2063,6 +2067,10 @@ out_misc:
 	ping_proc_exit();
 out_ping:
 	udp4_proc_exit();
+#ifdef CONFIG_TCP_MIGRATE
+out_tcpmig:
+  tcpmig_proc_exit();
+#endif
 out_udp:
 	tcp4_proc_exit();
 out_tcp:

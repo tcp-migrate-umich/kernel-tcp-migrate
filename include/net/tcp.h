@@ -53,9 +53,16 @@ extern struct percpu_counter tcp_orphan_count;
 void tcp_time_wait(struct sock *sk, int state, int timeo);
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
+#define tcpmig_debug(fmt, args...)         \
+  do {                \
+      pr_err(__FILE__ ": " fmt, ##args);  \
+  } while (0)
 /* Global array of migrate_enabled sockets */
 #define MAX_TOKEN 10000
 extern struct sock *migrate_socks[MAX_TOKEN];
+#else
+#define tcpmig_debug(fmt, args...)         \
+  do { } while (0)
 #endif
 
 #define MAX_TCP_HEADER	(128 + MAX_HEADER)
@@ -589,18 +596,22 @@ int tcp_send_synack(struct sock *);
 void tcp_push_one(struct sock *, unsigned int mss_now);
 void __tcp_send_ack(struct sock *sk, u32 rcv_nxt);
 void tcp_send_ack(struct sock *sk);
-#if IS_ENABLED(CONFIG_TCP_MIGRATE)
-void tcp_send_migrate_req(struct sock *sk);
-int tcp_v4_migrate_hash(struct sock *sk);
-int tcp_v4_migrate_unhash(struct sock *sk);
-int tcp_v4_migrate_hash_place(struct sock *sk, u32 token);
-bool tcp_v4_migrate_unhashed(const struct sock *sk);
-#endif
 void tcp_send_delayed_ack(struct sock *sk);
 void tcp_send_loss_probe(struct sock *sk);
 bool tcp_schedule_loss_probe(struct sock *sk, bool advancing_rto);
 void tcp_skb_collapse_tstamp(struct sk_buff *skb,
 			     const struct sk_buff *next_skb);
+/* tcp_migrate.c */
+int tcp_v4_migrate_hash(struct sock *sk);
+int tcp_v4_migrate_unhash(struct sock *sk);
+int tcp_v4_migrate_hash_place(struct sock *sk, u32 token);
+bool tcp_v4_migrate_unhashed(const struct sock *sk);
+void tcp_send_migrate_req(struct sock *sk);
+int tcp_v4_migrate_request(struct sk_buff *skb, struct tcp_options_received *opts);
+#ifdef CONFIG_PROC_FS
+int tcpmig_proc_init(void);
+void tcpmig_proc_exit(void);
+#endif
 
 /* tcp_input.c */
 void tcp_rearm_rto(struct sock *sk);
@@ -1908,9 +1919,6 @@ int tcp_rtx_synack(const struct sock *sk, struct request_sock *req);
 int tcp_conn_request(struct request_sock_ops *rsk_ops,
 		     const struct tcp_request_sock_ops *af_ops,
 		     struct sock *sk, struct sk_buff *skb);
-#ifdef CONFIG_TCP_MIGRATE
-int tcp_v4_migrate_request(struct sk_buff *skb, struct tcp_options_received *opts);
-#endif
 
 /* TCP af-specific functions */
 struct tcp_sock_af_ops {
