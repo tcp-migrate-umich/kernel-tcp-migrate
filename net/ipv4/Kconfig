@@ -755,7 +755,26 @@ config TCP_MD5SIG
 	  If unsure, say N.
 
 config TCP_MIGRATE
-  	bool "TCP: Support for migrating TCP connections"
-	---help---
-	  If unsure, say Y ;)
+  	bool "TCP: Support for migrating TCP connections (NEW)"
+    select CHECKPOINT_RESTORE
+    select NAMESPACES
+    select UTS_NS
+    select IPC_NS
+    select PID_NS
+    select NET_NS
+    select FHANDLE
+    select EVENTFD
+    select EPOLL
+    select UNIX_DIAG
+    select INET_DIAG
+    select INET_UDP_DIAG
+    select PACKET_DIAG
+    select NETLINK_DIAG
+    select TUN
+    default y
+    ---help---
+      Seamless TCP migration support in CRIU between two hosts. Its main 
+      goal is to automatically redirect TCP traffic from client's side to
+      a new host that server migrated to by CRIU.
 
+      If unsure, say Y ;)
