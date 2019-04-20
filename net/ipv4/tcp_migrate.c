@@ -1,6 +1,23 @@
 /*
  * Seamless TCP connection migration for CRIU 
  *
+ * tcp_migrate is specifically designed for checkpooint restore in
+ * userspace (CRIU) case where
+ *    Servers: A        B
+ *              \     /
+ *     Client:     C
+ * computation heavy workload is offloaded to server A originally and
+ * process/container migrates to server B that has a new public IP
+ * address. With existing solution, front-end application at client C
+ * must either run a proxy or manually redirect to forward traffic to
+ * new server B. 
+ *
+ * With tcp_migrate, server B initiates migration stage and sends
+ * **tcp_migrate_req** to client C so that following traffic is
+ * properly forwarded to server B.
+ *
+ * The original TCP migration idea is inspired from 
+ *    http://nms.lcs.mit.edu/papers/e2emobility.pdf
  */
 #include <net/tcp.h>
 
@@ -9,6 +26,7 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/inetdevice.h>
+#include <linux/sched.h>
 
 #if !IS_ENABLED(CONFIG_TCP_MIGRATE)
 int tcp_v4_migrate_hash(struct sock *sk){ return 0; }
@@ -77,15 +95,18 @@ int tcp_v4_migrate_hash(struct sock *sk)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	u32 token = next_avail_token();
+  pid_t pid = task_pid_nr(current);
 
-	printk(KERN_INFO "[%p][%s] migrate_hash\n", (void*)sk, __func__);
+	tcpmig_debug("[%s] pid=%d\n", __func__, pid);
 
 	if (token == TCP_MIGRATE_NOTOKEN) {
-		printk(KERN_INFO "[%p][%s] no more tokens available\n", (void*)sk, __func__);
+    tcpmig_debug("[%s] no more tokens available pid%d\n", __func__,
+        pid);
 		return -1;
 	}
 
-	printk(KERN_INFO "[%p][%s] assigning token to socket: %u\n", (void*)sk, __func__, token);
+  tcpmig_debug("[%s] assigning token to socket: %u pid=%d\n",
+      __func__, token, pid);
 	tp->migrate_token = token;
 
 	if (tcp_v4_migrate_hash_place(sk, token)) {
@@ -100,8 +121,9 @@ int tcp_v4_migrate_unhash(struct sock *sk)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	u32 token = tp->migrate_token;
+  pid_t pid = task_pid_nr(current);
 
-	printk(KERN_INFO "[%p][%s] migrate_unhash: token=%u\n", (void*)sk, __func__, token);
+	tcpmig_debug("[%s] pid=%d, token=%u\n", __func__, pid, token);
 
 	WARN_ON(tcp_v4_migrate_unhashed(sk));
 
@@ -109,7 +131,8 @@ int tcp_v4_migrate_unhash(struct sock *sk)
 		return -1;
 
 	if (migrate_socks[token] != sk) {
-		printk(KERN_INFO "[%p][%s] migrate_socks[%u] != this sk (actually %p)\n", (void*)sk, __func__, token, (void*)migrate_socks[token]);
+    tcpmig_debug("[%s] migrate_socks[%u] != this sk (actually %p)\n",
+        __func__, token, (void*)migrate_socks[token]);
 		return -1;
 	}
 

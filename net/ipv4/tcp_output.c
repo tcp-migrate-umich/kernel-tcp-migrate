@@ -522,8 +522,6 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 				       (TCPOPT_MIGRATE_PERM << 8) |
 				       TCPOLEN_MIGRATE_PERM);
 			*ptr++ = htonl(opts->migrate_token);
-
-
 		}
 		/* Migrate request option, sent by migrated endpoint */
 		else if (opts->migrate_req) {

@@ -458,6 +458,7 @@ void tcp_init_sock(struct sock *sk)
 	sk->sk_rcvbuf = sock_net(sk)->ipv4.sysctl_tcp_rmem[1];
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
+  // TODO: put check for src/dst port and exclude localhost?
 	tp->migrate_enabled = true;
 	tp->migrate_req_snd = false;
 	tp->migrate_token = TCP_MIGRATE_NOTOKEN;

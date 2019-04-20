@@ -3835,7 +3835,7 @@ void tcp_parse_options(const struct net *net,
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
 			case TCPOPT_MIGRATE_PERM:
 				if (opsize == TCPOLEN_MIGRATE_PERM && th->syn) {
-					printk(KERN_INFO "[%s] detected TCPOPT_MIGRATE_PERM!\n", __func__);
+					/* printk(KERN_INFO "[%s] detected TCPOPT_MIGRATE_PERM!\n", __func__); */
 					opt_rx->migrate_perm = 1;
 					opt_rx->migrate_token = get_unaligned_be32(ptr);
 				}
@@ -3843,7 +3843,7 @@ void tcp_parse_options(const struct net *net,
 
 			case TCPOPT_MIGRATE_REQ:
 				if (opsize == TCPOLEN_MIGRATE_REQ) {
-					printk(KERN_INFO "[%s] detected TCPOPT_MIGRATE_REQ!\n", __func__);
+					/* printk(KERN_INFO "[%s] detected TCPOPT_MIGRATE_REQ!\n", __func__); */
 					opt_rx->migrate_req = 1;
 					opt_rx->migrate_token = get_unaligned_be32(ptr);
 				}
@@ -6513,6 +6513,7 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 		goto drop_and_free;
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
+  // TODO: doesn't seem like working? dmesg | grep received
 	/* Upon receiving a SYN with migrate permitted,
 	 * update our tcp sock's migrate token to match
 	 * the one in the SYN.

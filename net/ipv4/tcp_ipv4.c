@@ -1487,8 +1487,10 @@ struct sock *tcp_v4_syn_recv_sock(const struct sock *sk, struct sk_buff *skb,
     __u16 destp = ntohs(newinet->inet_dport);
     __u16 srcp = ntohs(newinet->inet_sport);
     if (destp != 22 && srcp != 22) {
-      tcpmig_debug("[%s] setting child token to %u\n", __func__, 
-          tcp_rsk(req)->migrate_token);
+      pid_t pid = task_pid_nr(current);
+      tcpmig_debug("[%s] setting child token to %u, pid=%d\n",
+          __func__, tcp_rsk(req)->migrate_token, pid);
+
       newtp->migrate_enabled = tcp_rsk(req)->migrate_enabled;
       newtp->migrate_token = tcp_rsk(req)->migrate_token;
     }
@@ -1502,11 +1504,13 @@ struct sock *tcp_v4_syn_recv_sock(const struct sock *sk, struct sk_buff *skb,
 	if (__inet_inherit_port(sk, newsk) < 0)
 		goto put_and_exit;
 	*own_req = inet_ehash_nolisten(newsk, req_to_sk(req_unhash));
+
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
 	/* place socket into migrate hash */
 	if (newtp->migrate_enabled) {
 		if (tcp_v4_migrate_hash_place(newsk, newtp->migrate_token)) {
-			printk(KERN_INFO "[%p][%s] no room for incoming connection request, token %u already taken in map\n", (void*)newsk, __func__, newtp->migrate_token);
+			tcpmig_debug("[%s] no room for incoming connection request,"
+          " token %u already taken in map\n", __func__, newtp->migrate_token);
 			goto put_and_exit;
 		}
 	}
