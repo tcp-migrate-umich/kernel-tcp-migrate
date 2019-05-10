@@ -3585,7 +3585,7 @@ static int do_tcp_getsockopt(struct sock *sk, int level,
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
 	case TCP_MIGRATE_ENABLED:
-		printk(KERN_INFO "[%p][%s] getting MIGRATE_ENABLED sockopt\n", (void*)sk, __func__);
+		tcpmig_debug("[%s] getting MIGRATE_ENABLED sockopt\n", __func__);
 		if (tp->migrate_enabled)
 			val = 1;
 		else
@@ -3593,7 +3593,8 @@ static int do_tcp_getsockopt(struct sock *sk, int level,
 		break;
 
 	case TCP_MIGRATE_TOKEN:
-		printk(KERN_INFO "[%p][%s] getting MIGRATE_TOKEN sockopt (is %u)\n", (void*)sk, __func__, tp->migrate_token);
+		tcpmig_debug("[%s] getting MIGRATE_TOKEN sockopt (is %u)\n",
+				__func__, tp->migrate_token);
 		if (tp->repair)
 			val = tp->migrate_token;
 		else

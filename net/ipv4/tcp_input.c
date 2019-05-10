@@ -6519,7 +6519,8 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 	 * the one in the SYN.
 	 */
 	if (tmp_opt.migrate_perm) {
-		printk(KERN_INFO "[%p][%s] received token in a syn: %u\n", (void*)sk, __func__, tp->migrate_token);
+		tcpmig_debug("[%s] received token in a syn: %u\n",  __func__,
+				tp->migrate_token);
 		tcp_rsk(req)->migrate_enabled = true;
 		tcp_rsk(req)->migrate_token = tmp_opt.migrate_token;
 	}

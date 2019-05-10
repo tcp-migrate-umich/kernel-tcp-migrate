@@ -71,7 +71,8 @@ bool tcp_v4_migrate_unhashed(const struct sock *sk)
 /* places sk into the migrate array at index token */
 int tcp_v4_migrate_hash_place(struct sock *sk, u32 token) 
 {
-	printk(KERN_INFO "[%p][%s] migrate_hash_place: token=%u\n", (void*)sk, __func__, token);
+	tcpmig_debug("[%s] migrate_hash_place: token=%u\n", __func__,
+			token);
 
 	WARN_ON(!tcp_v4_migrate_unhashed(sk));
 
@@ -79,7 +80,8 @@ int tcp_v4_migrate_hash_place(struct sock *sk, u32 token)
 		return -1;
 
 	if (migrate_socks[token] != NULL) {
-		printk(KERN_INFO "[%p][%s] migrate_socks[%u] already taken by %p\n", (void*)sk, __func__, token, (void*)migrate_socks[token]);
+		tcpmig_debug("[%s] migrate_socks[%u] already taken by %p\n",
+				__func__, token, (void*)migrate_socks[token]);
 		return -1;
 	}
 	migrate_socks[token] = sk;
@@ -123,7 +125,14 @@ int tcp_v4_migrate_unhash(struct sock *sk)
 	u32 token = tp->migrate_token;
   pid_t pid = task_pid_nr(current);
 
-	tcpmig_debug("[%s] pid=%d, token=%u\n", __func__, pid, token);
+	/* for pid to app name trick */
+	/* FIXME-JOSEPH: may cause a kernel panic (not tested yet) */
+	char appname[TASK_COMM_LEN];
+	bzero(appname, TASK_COMM_LEN);
+	get_task_task(appname, current);
+
+	tcpmig_debug("[%s] pid=%d, token=%u, app=%s\n", __func__, pid,
+			token, appname);
 
 	WARN_ON(tcp_v4_migrate_unhashed(sk));
 
