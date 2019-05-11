@@ -3598,6 +3598,20 @@ int tcp_connect(struct sock *sk)
 	// TODO remove: disable migration for ssh
 	if (ntohs(inet_sk(sk)->inet_dport) == 22 || ntohs(inet_sk(sk)->inet_num) == 22) {
 		tp->migrate_enabled = false;
+	} else {
+		char appname[TASK_COMM_LEN];
+		memset(appname, 0, TASK_COMM_LEN);
+		get_task_comm(appname, current);
+
+		/* let's cover curl for now? */
+		if (!strcmp(appname, "curl")) {
+			tp->migrate_enabled = true;
+
+			pid_t pid = task_pid_nr(current);
+			tcpmig_debug("[%s] pid=%d app=%s\n", __func__, pid, appname);
+		} else {
+			tp->migrate_enabled = false;
+		}
 	}
 #endif
 

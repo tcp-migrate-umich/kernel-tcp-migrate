@@ -128,8 +128,8 @@ int tcp_v4_migrate_unhash(struct sock *sk)
 	/* for pid to app name trick */
 	/* FIXME-JOSEPH: may cause a kernel panic (not tested yet) */
 	char appname[TASK_COMM_LEN];
-	bzero(appname, TASK_COMM_LEN);
-	get_task_task(appname, current);
+	memset(appname, 0, TASK_COMM_LEN);
+	get_task_comm(appname, current);
 
 	tcpmig_debug("[%s] pid=%d, token=%u, app=%s\n", __func__, pid,
 			token, appname);

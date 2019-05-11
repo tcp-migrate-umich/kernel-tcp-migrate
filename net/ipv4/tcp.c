@@ -3584,12 +3584,20 @@ static int do_tcp_getsockopt(struct sock *sk, int level,
 		break;
 
 #if IS_ENABLED(CONFIG_TCP_MIGRATE)
-	case TCP_MIGRATE_ENABLED:
-		tcpmig_debug("[%s] getting MIGRATE_ENABLED sockopt\n", __func__);
+	case TCP_MIGRATE_ENABLED: {
+		pid_t pid = task_pid_nr(current);
+		/* for pid to app name trick */
+		char appname[TASK_COMM_LEN];
+		memset(appname, 0, TASK_COMM_LEN);
+		get_task_comm(appname, current);
+
+		tcpmig_debug("[%s] getting MIGRATE_ENABLED sockopt, pid=%d app=%s\n",
+				__func__, pid, appname);
 		if (tp->migrate_enabled)
 			val = 1;
 		else
 			val = 0;
+		}
 		break;
 
 	case TCP_MIGRATE_TOKEN:
